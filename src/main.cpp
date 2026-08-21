@@ -9,7 +9,7 @@ int main() {
   std::string input;
 
   std::cout << "$ ";
-  std::cin >> input;
+  std::getline(std::cin, input);
 
   std::cout << input << ": command not found";
 }
