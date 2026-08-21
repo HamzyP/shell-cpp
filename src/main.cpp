@@ -5,12 +5,12 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
-#include <process.h>
 
 #ifdef _WIN32
 #include <process.h>
 #else
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 
 bool is_executable(const std::filesystem::path& path){
@@ -38,10 +38,9 @@ std::string find_command(const std::string& command){
         #ifdef _WIN32
         std::filesystem::path candidate = std::filesystem::path(directory) / (command + ".exe");
         #else
-        std::filesystem::path candidate = std::filesystem::path(directory) / command;;
+        std::filesystem::path candidate = std::filesystem::path(directory) / command;
         #endif
 
-        std::cout << candidate << std::endl;
         if (std::filesystem::exists(candidate)){ // candidate exists
           if (is_executable(candidate)){//candidate is executable
             return candidate.string();
@@ -66,6 +65,7 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
       }
 }
 
+#ifdef _WIN32
 void launch_program_windows(const std::string& command_path, const std::string& command, std::istringstream& iss){
   //split arguments
   std::vector<std::string> args;
@@ -89,8 +89,47 @@ void launch_program_windows(const std::string& command_path, const std::string& 
   
 }
 
+#else
 
-void launch_program_linux(const std::string& command_path, const std::string& command, std::istringstream& iss);
+void launch_program_linux(const std::string& command_path, const std::string& command, std::istringstream& iss){
+  //split arguments
+  std::vector<std::string> args;
+  args.push_back(command); //argv[0] is program name
+
+  std::string argument;
+
+  while (iss >> argument){
+    args.push_back(argument);
+  }
+
+  //execv does not accept vector<string>, so C-style string
+  std::vector<char*> argv;
+
+  for (std::string& arg : args){
+    argv.push_back(arg.data());
+  }
+
+  argv.push_back(nullptr); //so execv knows where the arguments stop
+
+  //fork() makes a copy of our shell process
+  pid_t pid = fork();
+  if (pid == 0) {
+    //this is child process
+
+    //replace child process with external program
+    execv(command_path.c_str(), argv.data());
+
+    //if we reach here, execv failed
+    perror("execv");
+    _exit(1);
+  }
+  else if (pid >0){
+    //this must be original shell process
+    // wait until external finishes
+    waitpid(pid, nullptr, 0);
+}
+}
+#endif
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -126,7 +165,7 @@ int main() {
       std::string command_path = find_command(command);
 
       if (command_path == ""){
-    std::cout << input << ": command not found" << std::endl;// no external programs and no built ins.
+    std::cout << command << ": command not found" << std::endl;// no external programs and no built ins.
     }
     else{
       #ifdef _WIN32
