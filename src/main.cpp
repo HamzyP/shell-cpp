@@ -68,7 +68,7 @@ int main() {
       } else {
         std::string command_path = find_command(input.substr(5));
         if (command_path != ""){
-          std::cout << input.substr(5) << "is" << command_path << std::endl;
+          std::cout << input.substr(5) << " is" << command_path << std::endl;
         }else{
         std::cout << input.substr(5) << ": not found" << std::endl;
         }
