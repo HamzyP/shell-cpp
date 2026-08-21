@@ -8,7 +8,7 @@ int main() {
 
   std::string input;
 
-  while(input != "q"){
+  while(input != "exit"){
     std::cout << "$ ";
     std::getline(std::cin, input);
     
