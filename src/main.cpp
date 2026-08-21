@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <sstream>
 #include <filesystem>
+#include <vector>
+#include <process.h>
 
 #ifdef _WIN32
 #else
@@ -31,16 +33,63 @@ std::string find_command(const std::string& command){
       std::istringstream ss(path);
       while(std::getline (ss, directory, delimiter)){ // loop through all possible file paths using delimiter
         // std::cout << directory << std::endl ; // output each file path
-        std::string candidate = directory + "/" + command;
+        
+        #ifdef _WIN32
+        std::filesystem::path candidate = std::filesystem::path(directory) / (command + ".exe");
+        #else
+        std::filesystem::path candidate = std::filesystem::path(directory) / command;;
+        #endif
+
+        std::cout << candidate << std::endl;
         if (std::filesystem::exists(candidate)){ // candidate exists
           if (is_executable(candidate)){//candidate is executable
-            return candidate;
+            return candidate.string();
           }
 
         }
       }
       return ""; //found nothing
 }
+
+
+void handle_type(const std::string& argument, const std::set<std::string>& shell_cmds){
+      if (shell_cmds.count(argument)){
+        std::cout << argument << " is a shell builtin" << std::endl;
+      } else {
+        std::string command_path = find_command(argument);
+        if (command_path != ""){
+          std::cout << argument << " is " << command_path << std::endl;
+        }else{
+        std::cout << argument << ": not found" << std::endl;
+        }
+      }
+}
+
+void launch_program_windows(const std::string& command_path, const std::string& command, std::istringstream& iss){
+  //split arguments
+  std::vector<std::string> args;
+
+  args.push_back(command);
+  
+  std::string argument;
+  while (iss >> argument) {
+    args.push_back(argument);
+  }
+
+  //_spawnv() does not accept vector<string> so we do C-style strings 
+  std::vector<const char*> argv;
+  for (const std::string& arg : args) {
+    argv.push_back(arg.c_str());
+  }
+
+  argv.push_back(nullptr); // so spawnv knows where the arguments stop.
+
+  _spawnv(_P_WAIT, command_path.c_str(), argv.data()); //P_WAIT means wait until program finishes then return here to shell.
+  
+}
+
+
+void launch_program_linux(const std::string& command_path, const std::string& command, std::istringstream& iss);
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -54,30 +103,39 @@ int main() {
 
     std::cout << "$ ";
     std::getline(std::cin, input);
+    std::istringstream iss(input);
+    std::string command;
+    iss >> command;
 
-    if(input == "exit"){
+    if(command == "exit"){
       break;
     }
 
-    else if(input.substr(0,5) == "echo "){
+    else if(command == "echo"){
       std::cout << input.substr(5) << std::endl;
     }
-    else if(input.substr(0,5) == "type "){
-      if (shell_cmds.count(input.substr(5))){
-        std::cout << input.substr(5) << " is a shell builtin" << std::endl;
-      } else {
-        std::string command_path = find_command(input.substr(5));
-        if (command_path != ""){
-          std::cout << input.substr(5) << " is " << command_path << std::endl;
-        }else{
-        std::cout << input.substr(5) << ": not found" << std::endl;
-        }
-      }
+
+    else if(command == "type"){
+      std::string argument;
+      iss >> argument; //only one word as an argument
+      handle_type(argument, shell_cmds);
     }
 
     else{
-    std::cout << input << ": command not found" << std::endl;
+      std::string command_path = find_command(command);
+
+      if (command_path == ""){
+    std::cout << input << ": command not found" << std::endl;// no external programs and no built ins.
     }
+    else{
+      #ifdef _WIN32
+      launch_program_windows(command_path, command, iss);
+      #else
+      launch_program_linux(command_path, command, iss);
+      #endif
+    }
+  }
+
   }
 }
 
