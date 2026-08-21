@@ -8,11 +8,15 @@ int main() {
 
   std::string input;
 
-  while(input != "exit"){
+  while(true){
+
     std::cout << "$ ";
     std::getline(std::cin, input);
-    if(input != "exit"){
-    std::cout << input << ": command not found" << std::endl;
+    
+    if(input == "exit"){
+      break;
     }
+
+    std::cout << input << ": command not found" << std::endl;
   }
 }
