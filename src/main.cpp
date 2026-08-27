@@ -137,7 +137,7 @@ int main() {
   std::cerr << std::unitbuf;
 
   std::string input;
-  std::set<std::string> shell_cmds = {"echo", "type", "exit"};
+  std::set<std::string> shell_cmds = {"echo", "type", "exit", "pwd"};
 
   while(true){
 
@@ -159,6 +159,11 @@ int main() {
       std::string argument;
       iss >> argument; //only one word as an argument
       handle_type(argument, shell_cmds);
+    }
+
+    else if(command == "pwd"){
+      // call OS for the path and output
+      std::cout << std::filesystem::current_path() << std::endl; // works on both linux and windows
     }
 
     else{
