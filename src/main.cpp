@@ -129,11 +129,19 @@ int main() {
     // std::istringstream iss(input);
     bool in_single_quote = false;
     bool in_double_quote = false;
+    bool escaped = false;
 
 
     for (char c : input){
+      if (escaped){
+        temp +=c;
+        escaped = false;
+      }
+      else if ( c == '\\' && !in_single_quote && !in_double_quote){
+        escaped = true;
+      }
 
-      if ( c == '\'' && !in_double_quote){
+      else if ( c == '\'' && !in_double_quote){
         in_single_quote = !in_single_quote;
       }
       else if (c == '"' && !in_single_quote){
