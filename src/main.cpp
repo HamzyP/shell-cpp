@@ -134,10 +134,21 @@ int main() {
 
     for (char c : input){
       if (escaped){
-        temp +=c;
-        escaped = false;
+        if (in_double_quote){
+          if (c == '"' || c == '\\'){
+            temp +=c;
+          } 
+          else {
+            temp += '\\';
+            temp += c;
+          }
+        }
+        else{
+          temp +=c;
+        }
+          escaped = false;
       }
-      else if ( c == '\\' && !in_single_quote && !in_double_quote){
+      else if ( c == '\\' && !in_single_quote){
         escaped = true;
       }
 
