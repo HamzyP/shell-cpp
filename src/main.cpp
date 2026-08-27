@@ -8,10 +8,107 @@
 
 #ifdef _WIN32
 #include <process.h>
+#include <io.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #else
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #endif
+
+struct ParsedCommand {
+  std::vector<std::string> args;
+  bool redirect_stdout = false;
+  std::string redirect_file;
+};
+
+ParsedCommand parse_input(const std::string& input){
+    ParsedCommand result;
+    std::string temp;
+
+    //add our own parser here
+    // std::istringstream iss(input);
+    bool in_single_quote = false;
+    bool in_double_quote = false;
+    bool escaped = false;
+
+
+    for (char c : input){
+      if (c == '>' && !in_single_quote && !in_double_quote){
+        result.redirect_stdout = true;
+
+        if(temp == "1"){
+          temp = "";
+        }
+        else if (!temp.empty()){
+          result.args.push_back(temp);
+          temp = "";
+        }
+
+        continue;
+      }
+
+      if (result.redirect_stdout){
+        if (c == ' ' && result.redirect_file.empty()){
+          continue;
+        }
+
+        result.redirect_file += c;
+        continue;
+      }
+      if (escaped){
+        if (in_double_quote){
+          if (c == '"' || c == '\\'){
+            temp +=c;
+          } 
+          else {
+            temp += '\\';
+            temp += c;
+          }
+        }
+        else{
+          temp +=c;
+        }
+          escaped = false;
+      }
+      else if ( c == '\\' && !in_single_quote){
+        escaped = true;
+      }
+
+      else if ( c == '\'' && !in_double_quote){
+        in_single_quote = !in_single_quote;
+      }
+      else if (c == '"' && !in_single_quote){
+        in_double_quote = !in_double_quote;
+      }
+
+      else if (c == ' '){
+        if (in_single_quote || in_double_quote){
+          temp += c;
+        }
+
+        else{
+          if (!temp.empty()){
+            result.args.push_back(temp);
+            temp = "";
+          }
+        }
+      }
+
+      else{
+        temp += c;
+      }
+      
+    }
+    if (!temp.empty()){
+      result.args.push_back(temp);
+    }
+
+
+  return result;
+}
+
 
 bool is_executable(const std::filesystem::path& path){
   #ifdef _WIN32
@@ -66,10 +163,10 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 }
 
 #ifdef _WIN32
-void launch_program_windows(const std::string& command_path, std::vector<std::string>& input_v){
+void launch_program_windows(const std::string& command_path, std::vector<std::string>& args){
   //_spawnv() does not accept vector<string> so we do C-style strings 
   std::vector<const char*> argv;
-  for (const std::string& arg : input_v) {
+  for (const std::string& arg : args) {
     argv.push_back(arg.c_str());
   }
 
@@ -81,11 +178,11 @@ void launch_program_windows(const std::string& command_path, std::vector<std::st
 
 #else
 
-void launch_program_linux(const std::string& command_path, std::vector<std::string>& input_v){
+void launch_program_linux(const std::string& command_path, std::vector<std::string>& args){
   //execv does not accept vector<string>, so C-style string
   std::vector<char*> argv;
 
-  for (std::string& arg : input_v){
+  for (std::string& arg : args){
     argv.push_back(arg.data());
   }
 
@@ -111,89 +208,20 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
 }
 #endif
 
-int main() {
-  // Flush after every std::cout / std:cerr
-  std::cout << std::unitbuf;
-  std::cerr << std::unitbuf;
-
-  std::string input;
-  std::set<std::string> shell_cmds = {"echo", "type", "exit", "pwd", "cd"};
-
-  while(true){
-    std::vector<std::string> input_v;
-    std::string temp;
-    std::cout << "$ ";
-    std::getline(std::cin, input);
-
-    //add our own parser here
-    // std::istringstream iss(input);
-    bool in_single_quote = false;
-    bool in_double_quote = false;
-    bool escaped = false;
-
-
-    for (char c : input){
-      if (escaped){
-        if (in_double_quote){
-          if (c == '"' || c == '\\'){
-            temp +=c;
-          } 
-          else {
-            temp += '\\';
-            temp += c;
-          }
-        }
-        else{
-          temp +=c;
-        }
-          escaped = false;
-      }
-      else if ( c == '\\' && !in_single_quote){
-        escaped = true;
-      }
-
-      else if ( c == '\'' && !in_double_quote){
-        in_single_quote = !in_single_quote;
-      }
-      else if (c == '"' && !in_single_quote){
-        in_double_quote = !in_double_quote;
-      }
-
-      else if (c == ' '){
-        if (in_single_quote || in_double_quote){
-          temp += c;
-        }
-
-        else{
-          if (!temp.empty()){
-            input_v.push_back(temp);
-            temp = "";
-          }
-        }
-      }
-
-      else{
-        temp += c;
-      }
-      
-    }
-    if (!temp.empty()){
-      input_v.push_back(temp);
-    }
-
-    std::string command;
+bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds){
+      std::string command;
     // iss >> command;
-    command = input_v[0];
+    command = parsed.args[0];
 
     if(command == "exit"){
-      break;
+      return false;
     }
 
     else if(command == "echo"){
-      for (size_t i = 1; i < input_v.size(); i++){
-        std::cout << input_v[i];
+      for (size_t i = 1; i < parsed.args.size(); i++){
+        std::cout << parsed.args[i];
 
-        if (i < input_v.size() - 1){
+        if (i < parsed.args.size() - 1){
           std::cout << ' ';
         }
 
@@ -203,7 +231,7 @@ int main() {
     }
 
     else if(command == "type"){
-      std::string argument = input_v[1];
+      std::string argument = parsed.args[1];
       handle_type(argument, shell_cmds);
     }
 
@@ -213,7 +241,7 @@ int main() {
     }
     else if(command == "cd"){
       //check if valid path
-      std::string arg_path = input_v[1];
+      std::string arg_path = parsed.args[1];
 
       if (arg_path == "~"){
         #ifdef _WIN32
@@ -242,14 +270,87 @@ int main() {
     }
     else{
       #ifdef _WIN32
-      launch_program_windows(command_path, input_v);
+      launch_program_windows(command_path, parsed.args);
       #else
-      launch_program_linux(command_path, input_v);
+      launch_program_linux(command_path, parsed.args);
       #endif
     }
   }
 
-  }
+  return true;
+
+}
+
+int redirect_stdout_to_file(const std::string& file){
+  #ifdef _WIN32
+    int saved_stdout = _dup(1);
+
+    int file_fd = _open(
+        file.c_str(),
+        _O_WRONLY | _O_CREAT | _O_TRUNC,
+        _S_IREAD | _S_IWRITE
+    );
+
+    _dup2(file_fd, 1);
+    _close(file_fd);
+    #else
+    int saved_stdout = dup(STDOUT_FILENO);
+
+    int file_fd = open(file.c_str(),O_WRONLY | O_CREAT | O_TRUNC,
+        0644); 
+    
+        dup2(file_fd, STDOUT_FILENO);
+        close(file_fd);
+    #endif
+
+      return saved_stdout;
+}
+
+void restore_stdout(int saved_stdout){
+  std::cout.flush();
+
+  #ifdef _WIN32
+  _dup2(saved_stdout, 1);
+  _close(saved_stdout);
+  #else
+  dup2(saved_stdout, STDOUT_FILENO);
+  close(saved_stdout);
+  #endif
 }
 
 
+int main(){
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
+  std::set<std::string> shell_cmds = {
+    "echo", "type", "exit", "pwd", "cd" };
+
+  while (true){
+    std::cout << "$ ";
+
+    std::string input;
+    std::getline(std::cin, input);
+
+    ParsedCommand parsed = parse_input(input);
+
+    if (parsed.args.empty()){
+      continue;
+    }
+
+    int saved_stdout = -1;
+
+    if(parsed.redirect_stdout){
+      saved_stdout = redirect_stdout_to_file(parsed.redirect_file);
+    }
+
+    bool keep_running = execute_command(parsed, shell_cmds);
+
+    if (parsed.redirect_stdout){
+      restore_stdout(saved_stdout);
+    }
+
+    if (!keep_running) {
+        break;
+    }
+  }
+}
