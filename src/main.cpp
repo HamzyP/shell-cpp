@@ -128,15 +128,20 @@ int main() {
     //add our own parser here
     // std::istringstream iss(input);
     bool in_single_quote = false;
+    bool in_double_quote = false;
+
 
     for (char c : input){
 
       if ( c == '\''){
         in_single_quote = !in_single_quote;
       }
+      else if (c == '"' && !in_single_quote){
+        in_double_quote = !in_double_quote;
+      }
 
       else if (c == ' '){
-        if (in_single_quote){
+        if (in_single_quote || in_double_quote){
           temp += c;
         }
 
