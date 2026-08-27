@@ -163,7 +163,7 @@ int main() {
 
     else if(command == "pwd"){
       // call OS for the path and output
-      std::cout << std::filesystem::current_path() << std::endl; // works on both linux and windows
+      std::cout << std::filesystem::current_path().string() << std::endl; // works on both linux and windows
     }
 
     else{
