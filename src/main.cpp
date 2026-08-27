@@ -133,7 +133,7 @@ int main() {
 
     for (char c : input){
 
-      if ( c == '\''){
+      if ( c == '\'' && !in_double_quote){
         in_single_quote = !in_single_quote;
       }
       else if (c == '"' && !in_single_quote){
