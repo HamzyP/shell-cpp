@@ -66,20 +66,10 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 }
 
 #ifdef _WIN32
-void launch_program_windows(const std::string& command_path, const std::string& command, std::istringstream& iss){
-  //split arguments
-  std::vector<std::string> args;
-
-  args.push_back(command);
-  
-  std::string argument;
-  while (iss >> argument) {
-    args.push_back(argument);
-  }
-
+void launch_program_windows(const std::string& command_path, std::vector<std::string>& input_v){
   //_spawnv() does not accept vector<string> so we do C-style strings 
   std::vector<const char*> argv;
-  for (const std::string& arg : args) {
+  for (const std::string& arg : input_v) {
     argv.push_back(arg.c_str());
   }
 
@@ -91,21 +81,11 @@ void launch_program_windows(const std::string& command_path, const std::string& 
 
 #else
 
-void launch_program_linux(const std::string& command_path, const std::string& command, std::istringstream& iss){
-  //split arguments
-  std::vector<std::string> args;
-  args.push_back(command); //argv[0] is program name
-
-  std::string argument;
-
-  while (iss >> argument){
-    args.push_back(argument);
-  }
-
+void launch_program_linux(const std::string& command_path, std::vector<std::string>& input_v){
   //execv does not accept vector<string>, so C-style string
   std::vector<char*> argv;
 
-  for (std::string& arg : args){
+  for (std::string& arg : input_v){
     argv.push_back(arg.data());
   }
 
@@ -140,24 +120,66 @@ int main() {
   std::set<std::string> shell_cmds = {"echo", "type", "exit", "pwd", "cd"};
 
   while(true){
-
+    std::vector<std::string> input_v;
+    std::string temp;
     std::cout << "$ ";
     std::getline(std::cin, input);
-    std::istringstream iss(input);
+
+    //add our own parser here
+    // std::istringstream iss(input);
+    bool in_single_quote = false;
+
+    for (char c : input){
+
+      if ( c == '\''){
+        in_single_quote = !in_single_quote;
+      }
+
+      else if (c == ' '){
+        if (in_single_quote){
+          temp += c;
+        }
+
+        else{
+          if (!temp.empty()){
+            input_v.push_back(temp);
+            temp = "";
+          }
+        }
+      }
+
+      else{
+        temp += c;
+      }
+      
+    }
+    if (!temp.empty()){
+      input_v.push_back(temp);
+    }
+
     std::string command;
-    iss >> command;
+    // iss >> command;
+    command = input_v[0];
 
     if(command == "exit"){
       break;
     }
 
     else if(command == "echo"){
-      std::cout << input.substr(5) << std::endl;
+      for (size_t i = 1; i < input_v.size(); i++){
+        std::cout << input_v[i];
+
+        if (i < input_v.size() - 1){
+          std::cout << ' ';
+        }
+
+      }
+
+      std::cout << std::endl;
     }
 
     else if(command == "type"){
-      std::string argument;
-      iss >> argument; //only one word as an argument
+      std::string argument = input_v[1];
       handle_type(argument, shell_cmds);
     }
 
@@ -167,8 +189,7 @@ int main() {
     }
     else if(command == "cd"){
       //check if valid path
-      std::string arg_path;
-      iss >> arg_path; //only one word as an argument
+      std::string arg_path = input_v[1];
 
       if (arg_path == "~"){
         #ifdef _WIN32
@@ -197,9 +218,9 @@ int main() {
     }
     else{
       #ifdef _WIN32
-      launch_program_windows(command_path, command, iss);
+      launch_program_windows(command_path, input_v);
       #else
-      launch_program_linux(command_path, command, iss);
+      launch_program_linux(command_path, input_v);
       #endif
     }
   }
