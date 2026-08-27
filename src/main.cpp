@@ -137,7 +137,7 @@ int main() {
   std::cerr << std::unitbuf;
 
   std::string input;
-  std::set<std::string> shell_cmds = {"echo", "type", "exit", "pwd"};
+  std::set<std::string> shell_cmds = {"echo", "type", "exit", "pwd", "cd"};
 
   while(true){
 
@@ -164,6 +164,19 @@ int main() {
     else if(command == "pwd"){
       // call OS for the path and output
       std::cout << std::filesystem::current_path().string() << std::endl; // works on both linux and windows
+    }
+    else if(command == "cd"){
+      //check if valid path
+      std::string arg_path;
+      iss >> arg_path; //only one word as an argument
+
+      if (std::filesystem::exists(arg_path) && std::filesystem::is_directory(arg_path)){ //valid path and is dir
+        std::filesystem::current_path(arg_path); //change the dir (overload func)
+      }
+      else{
+        std::cout << "cd:" << arg_path <<": No such file or directory";
+      }
+      // if not valid print error message and dont change dir
     }
 
     else{
