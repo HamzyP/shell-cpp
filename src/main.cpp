@@ -170,6 +170,16 @@ int main() {
       std::string arg_path;
       iss >> arg_path; //only one word as an argument
 
+      if (arg_path == "~"){
+        #ifdef _WIN32
+        arg_path = std::getenv("USERPROFILE");
+        #else
+        arg_path = std::getenv("HOME");
+
+        #endif
+      }
+
+
       if (std::filesystem::exists(arg_path) && std::filesystem::is_directory(arg_path)){ //valid path and is dir
         std::filesystem::current_path(arg_path); //change the dir (overload func)
       }
