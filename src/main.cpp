@@ -47,12 +47,13 @@ ParsedCommand parse_input(const std::string& input){
           temp = "";
           result.redirect_stderr = true;
         }
-        else if (!temp.empty()){
-          result.args.push_back(temp);
+        else{
+          if (!temp.empty()){
+            result.args.push_back(temp);
+            temp = "";
+          }
           result.redirect_stdout = true;
-          temp = "";
         }
-
         continue;
       }
       if (result.redirect_stdout || result.redirect_stderr){
@@ -272,7 +273,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       std::string command_path = find_command(command);
 
       if (command_path == ""){
-    std::cout << command << ": command not found" << std::endl;// no external programs and no built ins.
+    std::cerr << command << ": command not found" << std::endl;// no external programs and no built ins.
     }
     else{
       #ifdef _WIN32
