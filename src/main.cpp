@@ -22,8 +22,8 @@ struct ParsedCommand {
   bool redirect_stdout = false;
   bool redirect_stderr = false;
   bool redirect_stdapp = false;
+  bool redirect_stderr_append = false;
   std::string redirect_file;
-
 };
 
 enum class ParserState {
@@ -162,6 +162,11 @@ ParsedCommand parse_input(const std::string& input){
         result.redirect_stderr = true;
         result.redirect_file = tokens[i + 1];
         i++;
+    }
+    else if (token == "2>>"){
+      result.redirect_stderr_append = true;
+      result.redirect_file = tokens[i+1];
+      i++;
     }
     else if (token == ">>" || token == "1>>") {
         // stdout append
@@ -425,6 +430,10 @@ int main(){
 
     int saved_fd = -1;
 
+    if(parsed.redirect_stderr_append){
+      saved_fd = redirect_to_file(parsed.redirect_file, 2, true);
+    }
+
     if(parsed.redirect_stdout){
       saved_fd = redirect_to_file(parsed.redirect_file, 1, false);
     }
@@ -441,7 +450,7 @@ int main(){
     if (parsed.redirect_stdout || parsed.redirect_stdapp){
       restore_fd(saved_fd, 1);
     }
-    if (parsed.redirect_stderr){
+    if (parsed.redirect_stderr || parsed.redirect_stderr_append){
       restore_fd(saved_fd, 2);
     }
 
