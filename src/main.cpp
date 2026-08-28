@@ -263,7 +263,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
         std::filesystem::current_path(arg_path); //change the dir (overload func)
       }
       else{
-        std::cout << "cd: " << arg_path <<": No such file or directory" << std::endl;
+        std::cerr << "cd: " << arg_path <<": No such file or directory" << std::endl;
       }
       // if not valid print error message and dont change dir
     }
