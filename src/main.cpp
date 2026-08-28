@@ -20,6 +20,7 @@
 struct ParsedCommand {
   std::vector<std::string> args;
   bool redirect_stdout = false;
+  bool redirect_stderr = false;
   std::string redirect_file;
 };
 
@@ -36,20 +37,25 @@ ParsedCommand parse_input(const std::string& input){
 
     for (char c : input){
       if (c == '>' && !in_single_quote && !in_double_quote){
-        result.redirect_stdout = true;
+        
 
         if(temp == "1"){
           temp = "";
+          result.redirect_stdout = true;
+        }
+        else if (temp == "2"){
+          temp = "";
+          result.redirect_stderr = true;
         }
         else if (!temp.empty()){
           result.args.push_back(temp);
+          result.redirect_stdout = true;
           temp = "";
         }
 
         continue;
       }
-
-      if (result.redirect_stdout){
+      if (result.redirect_stdout || result.redirect_stderr){
         if (c == ' ' && result.redirect_file.empty()){
           continue;
         }
@@ -281,9 +287,9 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
 
 }
 
-int redirect_stdout_to_file(const std::string& file){
+int redirect_to_file(const std::string& file, int target_fd){
   #ifdef _WIN32
-    int saved_stdout = _dup(1);
+    int saved_fd = _dup(target_fd);
 
     int file_fd = _open(
         file.c_str(),
@@ -291,30 +297,30 @@ int redirect_stdout_to_file(const std::string& file){
         _S_IREAD | _S_IWRITE
     );
 
-    _dup2(file_fd, 1);
+    _dup2(file_fd, target_fd);
     _close(file_fd);
     #else
-    int saved_stdout = dup(STDOUT_FILENO);
+    int saved_fd = dup(target_fd);
 
     int file_fd = open(file.c_str(),O_WRONLY | O_CREAT | O_TRUNC,
         0644); 
     
-        dup2(file_fd, STDOUT_FILENO);
+        dup2(file_fd, target_fd);
         close(file_fd);
     #endif
 
-      return saved_stdout;
+      return saved_fd;
 }
 
-void restore_stdout(int saved_stdout){
+void restore_fd(int saved_fd, int target_fd){
   std::cout.flush();
 
   #ifdef _WIN32
-  _dup2(saved_stdout, 1);
-  _close(saved_stdout);
+  _dup2(saved_fd, target_fd);
+  _close(saved_fd);
   #else
-  dup2(saved_stdout, STDOUT_FILENO);
-  close(saved_stdout);
+  dup2(saved_fd, target_fd);
+  close(saved_fd);
   #endif
 }
 
@@ -337,16 +343,23 @@ int main(){
       continue;
     }
 
-    int saved_stdout = -1;
+    int saved_fd = -1;
 
     if(parsed.redirect_stdout){
-      saved_stdout = redirect_stdout_to_file(parsed.redirect_file);
+      saved_fd = redirect_to_file(parsed.redirect_file, 1);
+    }
+
+    if(parsed.redirect_stderr){
+      saved_fd = redirect_to_file(parsed.redirect_file, 2);
     }
 
     bool keep_running = execute_command(parsed, shell_cmds);
 
     if (parsed.redirect_stdout){
-      restore_stdout(saved_stdout);
+      restore_fd(saved_fd, 1);
+    }
+    if (parsed.redirect_stderr){
+      restore_fd(saved_fd, 2);
     }
 
     if (!keep_running) {
