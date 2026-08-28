@@ -21,97 +21,158 @@ struct ParsedCommand {
   std::vector<std::string> args;
   bool redirect_stdout = false;
   bool redirect_stderr = false;
+  bool redirect_stdapp = false;
   std::string redirect_file;
+
 };
 
-ParsedCommand parse_input(const std::string& input){
-    ParsedCommand result;
-    std::string temp;
-
-    //add our own parser here
-    // std::istringstream iss(input);
-    bool in_single_quote = false;
-    bool in_double_quote = false;
-    bool escaped = false;
+enum class ParserState {
+  normal,
+  singleq,
+  doubleq,
+};
 
 
-    for (char c : input){
-      if (c == '>' && !in_single_quote && !in_double_quote){
-        
+std::vector<std::string> tokenizer(const std::string& input){
+  ParserState state = ParserState::normal;
 
-        if(temp == "1"){
-          temp = "";
-          result.redirect_stdout = true;
+  std::vector<std::string> tokens;
+  std::string temp;
+  bool escaped = false;
+
+  for(size_t i = 0; i < input.size(); i++){
+    char c = input[i];
+
+    switch (state){
+      case ParserState::normal:
+        //space
+        if (escaped){
+          temp += c;
+          escaped = false;
         }
-        else if (temp == "2"){
-          temp = "";
-          result.redirect_stderr = true;
-        }
-        else{
+
+        else if (c == ' '){
           if (!temp.empty()){
-            result.args.push_back(temp);
+            tokens.push_back(temp);
             temp = "";
           }
-          result.redirect_stdout = true;
-        }
-        continue;
-      }
-      if (result.redirect_stdout || result.redirect_stderr){
-        if (c == ' ' && result.redirect_file.empty()){
-          continue;
         }
 
-        result.redirect_file += c;
-        continue;
-      }
-      if (escaped){
-        if (in_double_quote){
-          if (c == '"' || c == '\\'){
-            temp +=c;
-          } 
-          else {
-            temp += '\\';
-            temp += c;
-          }
+        //escape - bs
+        else if (c == '\\'){
+          escaped = true;
+        }
+        //sq
+        else if (c == '\''){
+          state = ParserState::singleq;
+        }
+        // dq
+        else if (c == '"'){
+          state = ParserState::doubleq;
+        }
+        // >
+        else if (c == '>') {
+            bool append = (i + 1 < input.size() && input[i + 1] == '>');
+
+            std::string op;
+
+            // Was there an explicit fd before > ?
+            if (temp == "1" || temp == "2") {
+                op = temp;
+                temp = "";
+            }
+            else {
+                // Normal argument before the redirect
+                if (!temp.empty()) {
+                    tokens.push_back(temp);
+                    temp = "";
+                }
+            }
+
+            if (append) {
+                op += ">>";
+                i++; // we've consumed the second >
+            }
+            else {
+                op += ">";
+            }
+            tokens.push_back(op);
+        }
+        else{
+          temp += c;
+          
+        }
+        break;
+      
+      case ParserState::singleq:
+        if (c == '\''){
+          state = ParserState::normal;
         }
         else{
           temp +=c;
         }
-          escaped = false;
-      }
-      else if ( c == '\\' && !in_single_quote){
-        escaped = true;
-      }
+        break;
 
-      else if ( c == '\'' && !in_double_quote){
-        in_single_quote = !in_single_quote;
-      }
-      else if (c == '"' && !in_single_quote){
-        in_double_quote = !in_double_quote;
-      }
-
-      else if (c == ' '){
-        if (in_single_quote || in_double_quote){
-          temp += c;
-        }
-
-        else{
-          if (!temp.empty()){
-            result.args.push_back(temp);
-            temp = "";
+      case ParserState::doubleq:
+        if (escaped){
+          if (c == '\\' || c == '"'){
+            temp+=c;
           }
+          else{
+            temp += '\\';
+            temp += c;
+          }
+          escaped = false;
         }
-      }
-
-      else{
-        temp += c;
-      }
-      
+        else if (c == '"' && !escaped){
+          state = ParserState::normal;
+        }
+        else if (c == '\\'){
+          escaped = true;
+        }
+        else{
+          temp+=c;
+        }
+        break;
     }
-    if (!temp.empty()){
-      result.args.push_back(temp);
-    }
 
+    
+  }
+  if (!temp.empty()){
+          tokens.push_back(temp);
+    }
+  return tokens;
+}
+
+ParsedCommand parse_input(const std::string& input){
+  ParsedCommand result;
+  std::vector<std::string> tokens = tokenizer(input);
+
+  for (size_t i = 0; i<tokens.size(); i++){
+    std::string token = tokens[i];
+
+    if(token == ">" || token == "1>"){
+      //stdout overwrite
+      result.redirect_stdout = true;
+      result.redirect_file = tokens[i + 1];
+      i++;
+    }
+    else if (token == "2>") {
+        // stderr overwrite
+        result.redirect_stderr = true;
+        result.redirect_file = tokens[i + 1];
+        i++;
+    }
+    else if (token == ">>" || token == "1>>") {
+        // stdout append
+        result.redirect_stdapp = true;
+        result.redirect_file = tokens[i + 1];
+        i++;
+    }
+    else {
+        result.args.push_back(token);
+    }
+  }
 
   return result;
 }
@@ -288,22 +349,40 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
 
 }
 
-int redirect_to_file(const std::string& file, int target_fd){
+int redirect_to_file(const std::string& file, int target_fd, bool append){
   #ifdef _WIN32
     int saved_fd = _dup(target_fd);
 
+    int mode = _O_WRONLY | _O_CREAT;
+
+    if (append) {
+      mode |= _O_APPEND;
+    } else{
+      mode |= _O_TRUNC;
+    }
+
     int file_fd = _open(
         file.c_str(),
-        _O_WRONLY | _O_CREAT | _O_TRUNC,
+        mode,
         _S_IREAD | _S_IWRITE
     );
 
     _dup2(file_fd, target_fd);
     _close(file_fd);
+
     #else
     int saved_fd = dup(target_fd);
 
-    int file_fd = open(file.c_str(),O_WRONLY | O_CREAT | O_TRUNC,
+    int mode = O_WRONLY | O_CREAT;
+
+    if(append){
+      mode |= O_APPEND;
+    } else {
+      mode |= O_TRUNC;
+    }
+
+    int file_fd = open(file.c_str(),
+        mode,
         0644); 
     
         dup2(file_fd, target_fd);
@@ -347,16 +426,19 @@ int main(){
     int saved_fd = -1;
 
     if(parsed.redirect_stdout){
-      saved_fd = redirect_to_file(parsed.redirect_file, 1);
+      saved_fd = redirect_to_file(parsed.redirect_file, 1, false);
     }
+       if (parsed.redirect_stdapp){
+        saved_fd = redirect_to_file(parsed.redirect_file, 1, true);
+       }
 
     if(parsed.redirect_stderr){
-      saved_fd = redirect_to_file(parsed.redirect_file, 2);
+      saved_fd = redirect_to_file(parsed.redirect_file, 2, false);
     }
 
     bool keep_running = execute_command(parsed, shell_cmds);
 
-    if (parsed.redirect_stdout){
+    if (parsed.redirect_stdout || parsed.redirect_stdapp){
       restore_fd(saved_fd, 1);
     }
     if (parsed.redirect_stderr){
@@ -368,3 +450,11 @@ int main(){
     }
   }
 }
+
+// int main(){
+//   std::vector<std::string> abc = tokenizer(std::string("echo    hello world"));
+//   for (std::string word : abc){
+//     std::cout << word << std::endl;
+//   }
+//   return 1;
+// }
