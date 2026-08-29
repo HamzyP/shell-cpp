@@ -440,6 +440,9 @@ char* command_generator(const char* text, int state){
 }
 
 char** completion(const char* text, int start, int end){
+  if(start != 0){
+    return nullptr;
+  }
     rl_attempted_completion_over = 1;
   return rl_completion_matches(text, command_generator);
 }
