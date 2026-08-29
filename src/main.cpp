@@ -421,12 +421,59 @@ char* duplicate_string(const char* str){
   #endif
 }
 
+std::vector<std::string> path_commands(){
+  std::vector<std::string> commands;
+
+  //get path
+  const char* path = std::getenv("PATH");
+
+  if (path == nullptr){
+    return commands;
+  }
+
+  //split path into dirs
+  #ifdef _WIN32
+    char delimiter = ';';
+  #else
+    char delimiter = ':';
+  #endif
+
+  std::istringstream ss(path);
+  std::string directory;
+
+  // loop through dirs
+  while (std::getline(ss, directory, delimiter)){
+    // directory is now 1 PATH directory
+    if (!std::filesystem::exists(directory)){
+        continue;
+      }
+
+    for (const auto& entry : std::filesystem::directory_iterator(directory)){
+      //check each file in this PATH directory
+      
+      if (is_executable(entry.path())) {
+        commands.push_back(entry.path().filename().string());
+      }
+
+
+    }
+  }
+
+  //add executable filesnames to commands
+
+  return commands;
+}
+
 char* command_generator(const char* text, int state){
-  static std::vector<std::string> commands = {"echo", "exit"};
+  static std::vector<std::string> commands;
   static size_t index;
 
   if (state == 0){
     index = 0;
+    commands = {"echo", "exit"};
+
+    std::vector<std::string> external = path_commands();
+    commands.insert(commands.end(), external.begin(), external.end());
   }
 
   while (index < commands.size()){
