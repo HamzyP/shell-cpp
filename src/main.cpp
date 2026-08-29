@@ -5,6 +5,9 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <cstring>
 
 #ifdef _WIN32
 #include <process.h>
@@ -410,17 +413,59 @@ void restore_fd(int saved_fd, int target_fd){
 }
 
 
+char* duplicate_string(const char* str){
+  #ifdef _WIN32
+    return _strdup(str);
+  #else
+    return strdup(str);
+  #endif
+}
+
+char* command_generator(const char* text, int state){
+  static std::vector<std::string> commands = {"echo", "exit"};
+  static size_t index;
+
+  if (state == 0){
+    index = 0;
+  }
+
+  while (index < commands.size()){
+    std::string command = commands[index++];
+
+    if (command.compare(0, strlen(text), text) == 0) {
+      return duplicate_string(command.c_str());
+    }
+  }
+  return nullptr;
+}
+
+char** completion(const char* text, int start, int end){
+    rl_attempted_completion_over = 1;
+  return rl_completion_matches(text, command_generator);
+}
+
+
 int main(){
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
   std::set<std::string> shell_cmds = {
     "echo", "type", "exit", "pwd", "cd" };
 
+  rl_attempted_completion_function = completion;
   while (true){
-    std::cout << "$ ";
+    // std::cout << "$ ";
 
-    std::string input;
-    std::getline(std::cin, input);
+    // std::string input;
+    // std::getline(std::cin, input);
+
+    char* line = readline("$ ");
+
+    if(line == nullptr){
+      break;
+    }
+
+    std::string input = line;
+    free(line);
 
     ParsedCommand parsed = parse_input(input);
 
