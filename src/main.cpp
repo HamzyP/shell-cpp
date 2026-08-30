@@ -292,6 +292,11 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     if(command == "exit"){
       return false;
     }
+    else if (command == "complete"){
+      if (parsed.args[1] == "-p"){
+        std::cout << "complete:" << parsed.args[2] << ": no completion specification";
+      }
+    }
 
     else if(command == "echo"){
       for (size_t i = 1; i < parsed.args.size(); i++){
