@@ -499,7 +499,7 @@ int main(){
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
   std::set<std::string> shell_cmds = {
-    "echo", "type", "exit", "pwd", "cd" };
+    "echo", "type", "exit", "pwd", "cd", "complete" };
 
   rl_attempted_completion_function = completion;
   while (true){
