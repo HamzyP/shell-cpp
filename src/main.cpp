@@ -294,7 +294,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     }
     else if (command == "complete"){
       if (parsed.args[1] == "-p"){
-        std::cout << "complete:" << parsed.args[2] << ": no completion specification" << std::endl;
+        std::cout << "complete: " << parsed.args[2] << ": no completion specification" << std::endl;
       }
     }
 
