@@ -296,7 +296,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     else if (command == "complete"){
       if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
         if (completions.find(parsed.args[2]) != completions.end()){
-          std::cout << "complete -C \'" << completions[parsed.args[2]] << "\' " << parsed.args[2]; //output the match
+          std::cout << "complete -C \'" << completions[parsed.args[2]] << "\' " << parsed.args[2]  << std::endl; //output the match
         } 
         else{
           std::cout << "complete: " << parsed.args[2] << ": no completion specification" << std::endl;
