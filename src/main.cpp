@@ -511,6 +511,35 @@ char** completion(const char* text, int start, int end){
 }
 
 
+std::string run_completer(const std::string& path){
+  #ifdef _WIN32
+  FILE* pipe = _popen(path.c_str(), "r");
+  #else
+  FILE* pipe = popen(path.c_str(), "r");
+  #endif
+
+  if (!pipe) return "";
+
+  char buffer [1024];
+  std::string result;
+  
+  if (fgets(buffer, sizeof(buffer), pipe) != nullptr){
+    result = buffer;
+  }
+
+  #ifdef _WIN32
+  _pclose(pipe);
+  #else
+  pclose(pipe);
+  #endif
+  
+  if (!result.empty() && result.back() == '\n'){
+    result.pop_back();
+  }
+
+  return result;
+}
+
 int main(){
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
