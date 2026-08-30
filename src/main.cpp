@@ -8,6 +8,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <cstring>
+#include <map>
 
 #ifdef _WIN32
 #include <process.h>
@@ -284,7 +285,7 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
 }
 #endif
 
-bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds){
+bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
       std::string command;
     // iss >> command;
     command = parsed.args[0];
@@ -293,8 +294,18 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       return false;
     }
     else if (command == "complete"){
-      if (parsed.args[1] == "-p"){
-        std::cout << "complete: " << parsed.args[2] << ": no completion specification" << std::endl;
+      if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
+        if (completions.find(parsed.args[2]) != completions.end()){
+          std::cout << "complete -C \'" << completions[parsed.args[2]] << "\' " << parsed.args[2]; //output the match
+        } 
+        else{
+          std::cout << "complete: " << parsed.args[2] << ": no completion specification" << std::endl;
+          }
+      }
+      else if (parsed.args.size() >= 4 && parsed.args[1] == "-C"){
+        std::string path = parsed.args[2];
+        std::string new_cmd = parsed.args[3];
+        completions[new_cmd] = path;
       }
     }
 
@@ -507,6 +518,9 @@ int main(){
     "echo", "type", "exit", "pwd", "cd", "complete" };
 
   rl_attempted_completion_function = completion;
+
+  std::map<std::string, std::string> completions;
+
   while (true){
     // std::cout << "$ ";
 
@@ -545,7 +559,7 @@ int main(){
       saved_fd = redirect_to_file(parsed.redirect_file, 2, false);
     }
 
-    bool keep_running = execute_command(parsed, shell_cmds);
+    bool keep_running = execute_command(parsed, shell_cmds, completions);
 
     if (parsed.redirect_stdout || parsed.redirect_stdapp){
       restore_fd(saved_fd, 1);
