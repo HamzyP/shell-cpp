@@ -21,6 +21,9 @@
 #include <fcntl.h>
 #endif
 
+std::map<std::string, std::string> completions;
+
+
 struct ParsedCommand {
   std::vector<std::string> args;
   bool redirect_stdout = false;
@@ -502,15 +505,6 @@ char* command_generator(const char* text, int state){
   return nullptr;
 }
 
-char** completion(const char* text, int start, int end){
-  if(start != 0){
-    return nullptr;
-  }
-    rl_attempted_completion_over = 1;
-  return rl_completion_matches(text, command_generator);
-}
-
-
 std::string run_completer(const std::string& path){
   #ifdef _WIN32
   FILE* pipe = _popen(path.c_str(), "r");
@@ -532,13 +526,42 @@ std::string run_completer(const std::string& path){
   #else
   pclose(pipe);
   #endif
-  
+
   if (!result.empty() && result.back() == '\n'){
     result.pop_back();
   }
 
   return result;
+}  
+
+char** completion(const char* text, int start, int end){
+  if(start != 0){
+    std::string line = rl_line_buffer;
+    size_t space = line.find(' ');
+    std::string command = line.substr(0, space);
+
+    if (completions.find(command) != completions.end()){
+      std::string candidate = run_completer(completions[command]);
+
+      if( !candidate.empty()){
+        rl_replace_line((command +" " + candidate + " ").c_str(), 0 );
+      }
+
+      rl_point = rl_end;
+      return nullptr;
+    }
+  
+
+    return nullptr;
+  }
+    rl_attempted_completion_over = 1;
+  return rl_completion_matches(text, command_generator);
 }
+
+
+
+
+
 
 int main(){
   std::cout << std::unitbuf;
@@ -548,7 +571,6 @@ int main(){
 
   rl_attempted_completion_function = completion;
 
-  std::map<std::string, std::string> completions;
 
   while (true){
     // std::cout << "$ ";
