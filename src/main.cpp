@@ -310,6 +310,10 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
         std::string path = parsed.args[2];
         std::string new_cmd = parsed.args[3];
         completions[new_cmd] = path;
+      } 
+      else if (parsed.args.size() >= 2 && parsed.args[1] == "-r"){
+        std::string key = parsed.args[2];
+        completions.erase(key);
       }
     }
 
