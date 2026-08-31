@@ -56,7 +56,7 @@ enum class ParserState {
   doubleq,
 };
 
-void reap_jobs(bool show_done) {
+void update_job_statuses() {
     for (Job& job : jobs) {
 
 #ifdef _WIN32
@@ -67,20 +67,64 @@ void reap_jobs(bool show_done) {
             &exit_code
         );
 
-        if (exit_code != STILL_ACTIVE) {
+        if (exit_code != STILL_ACTIVE)
             job.status = "Done";
-        }
 
 #else
         int status;
+        pid_t result = waitpid(job.process, &status, WNOHANG);
 
-        pid_t result =
-            waitpid(job.process, &status, WNOHANG);
-
-        if (result == job.process && WIFEXITED(status)) {
+        if (result == job.process)
             job.status = "Done";
-        }
 #endif
+    }
+}
+
+void reap_jobs(bool show_done) {
+    for (size_t i = 0; i < jobs.size();) {
+        bool done = false;
+
+#ifdef _WIN32
+        DWORD exit_code;
+
+        GetExitCodeProcess(
+            reinterpret_cast<HANDLE>(jobs[i].process),
+            &exit_code
+        );
+
+        done = exit_code != STILL_ACTIVE;
+#else
+        int status;
+        pid_t result = waitpid(jobs[i].process, &status, WNOHANG);
+
+        done = result == jobs[i].process;
+#endif
+
+        if (done) {
+            char marker = ' ';
+
+            if (i == jobs.size() - 1)
+                marker = '+';
+            else if (jobs.size() >= 2 && i == jobs.size() - 2)
+                marker = '-';
+
+            if (show_done) {
+                std::cout
+                    << "[" << jobs[i].job_number << "]" << marker << "  "
+                    << std::left << std::setw(24) << "Done"
+                    << jobs[i].command
+                    << std::endl;
+            }
+
+#ifdef _WIN32
+            CloseHandle(reinterpret_cast<HANDLE>(jobs[i].process));
+#endif
+
+            jobs.erase(jobs.begin() + i);
+        }
+        else {
+            i++;
+        }
     }
 }
 
@@ -416,42 +460,40 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
 
       std::cout << std::endl;
     }
-    else if (command == "jobs") {
-      reap_jobs(true);
-      for (size_t i = 0; i < jobs.size();) {
-          char marker = ' ';
+else if (command == "jobs") {
+    update_job_statuses();
 
-          if (i == jobs.size() - 1) {
-              marker = '+';
-          }
-          else if (jobs.size() >= 2 && i == jobs.size() - 2) {
-              marker = '-';
-          }
+    for (size_t i = 0; i < jobs.size();) {
+        char marker = ' ';
 
-          Job& job = jobs[i];
+        if (i == jobs.size() - 1)
+            marker = '+';
+        else if (jobs.size() >= 2 && i == jobs.size() - 2)
+            marker = '-';
 
-          std::cout
-              << "[" << job.job_number << "]" << marker << "  "
-              << std::left << std::setw(24) << job.status
-              << job.command;
-                  if (job.status == "Running") {
+        Job& job = jobs[i];
+
+        std::cout
+            << "[" << job.job_number << "]" << marker << "  "
+            << std::left << std::setw(24) << job.status
+            << job.command;
+
+        if (job.status == "Running")
             std::cout << " &";
-        }
 
         std::cout << std::endl;
 
-              if (job.status == "Done") {
-      #ifdef _WIN32
-                  CloseHandle(reinterpret_cast<HANDLE>(job.process));
-      #endif
-                  jobs.erase(jobs.begin() + i);
-              }
-              else {
-                  i++;
-              }
-          
-      }
-  }
+        if (job.status == "Done") {
+#ifdef _WIN32
+            CloseHandle(reinterpret_cast<HANDLE>(job.process));
+#endif
+            jobs.erase(jobs.begin() + i);
+        }
+        else {
+            i++;
+        }
+    }
+}
     else if(command == "type"){
       std::string argument = parsed.args[1];
       handle_type(argument, shell_cmds);
@@ -804,6 +846,7 @@ int main(){
     // std::string input;
     // std::getline(std::cin, input);
 
+    reap_jobs(true);
     char* line = readline("$ ");
 
     if(line == nullptr){
