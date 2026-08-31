@@ -9,6 +9,7 @@
 #include <readline/history.h>
 #include <cstring>
 #include <map>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <process.h>
@@ -505,7 +506,7 @@ char* command_generator(const char* text, int state){
   return nullptr;
 }
 
-std::string run_completer(const std::string& path, const std::string& command, const std::string& current, const std::string& previous, const std::string& line, int point){
+std::vector<std::string> run_completer(const std::string& path, const std::string& command, const std::string& current, const std::string& previous, const std::string& line, int point){
   
   std::string call =
     "COMP_LINE='" + line +
@@ -521,13 +522,19 @@ std::string run_completer(const std::string& path, const std::string& command, c
   FILE* pipe = popen(call.c_str(), "r");
   #endif
 
-  if (!pipe) return "";
+  if (!pipe) return {};
 
   char buffer [1024];
-  std::string result;
+  std::vector<std::string> result;
   
-  if (fgets(buffer, sizeof(buffer), pipe) != nullptr){
-    result = buffer;
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr){
+    std::string candidate = buffer;
+
+    if (!candidate.empty() && candidate.back() == '\n') {
+        candidate.pop_back();
+    }
+
+    result.push_back(candidate);
   }
 
   #ifdef _WIN32
@@ -535,10 +542,6 @@ std::string run_completer(const std::string& path, const std::string& command, c
   #else
   pclose(pipe);
   #endif
-
-  if (!result.empty() && result.back() == '\n'){
-    result.pop_back();
-  }
 
   return result;
 }  
@@ -551,6 +554,8 @@ char** completion(const char* text, int start, int end){
     std::string command = words[0];
     std::string current = text;
     std::string previous = "";
+
+    static bool first_tab = false;
 
     if (current.empty()){
       if (words.size() >= 2) {
@@ -565,11 +570,36 @@ char** completion(const char* text, int start, int end){
     // std::string command = line.substr(0, space);
 
     if (completions.find(command) != completions.end()){
-      std::string candidate = run_completer(completions[command], command, current, previous, line, rl_point);
+      std::vector<std::string> candidate = run_completer(completions[command], command, current, previous, line, rl_point);
 
-      if( !candidate.empty()){
-        std::string completed = line.substr(0, start) + candidate + " ";
+      if (candidate.empty()){
+        first_tab = false;
+        rl_ding();
+      }
+      else if(candidate.size() == 1){
+        first_tab = false;
+
+        std::string completed = line.substr(0, start) + candidate[0] + " ";
+
         rl_replace_line(completed.c_str(), 0);  
+      }
+      else {
+        first_tab = !first_tab;
+        if (first_tab){
+          rl_ding();
+        } else{
+          std::sort(candidate.begin(), candidate.end());
+          
+          rl_crlf();
+
+          for (std::string c : candidate){
+            std::cout << c << "  ";
+          }
+          std::cout << std::endl;
+
+          rl_on_new_line();
+          rl_redisplay();
+        }
       }
 
       rl_point = rl_end;
