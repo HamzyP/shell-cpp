@@ -292,7 +292,7 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
     //this must be original shell process
     // wait until external finishes
     if(background){
-      std::cout << "[1]" << pid << std::endl;
+      std::cout << "[1] " << pid << std::endl;
     }else{
     waitpid(pid, nullptr, 0);
     }
