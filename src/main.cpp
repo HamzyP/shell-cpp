@@ -505,9 +505,15 @@ char* command_generator(const char* text, int state){
   return nullptr;
 }
 
-std::string run_completer(const std::string& path, const std::string& command, const std::string& current, const std::string& previous){
+std::string run_completer(const std::string& path, const std::string& command, const std::string& current, const std::string& previous, const std::string& line, int point){
   
-  std::string call = path + " '" + command + "' '" + current + "' '" + previous + "'";
+  std::string call =
+    "COMP_LINE='" + line +
+    "' COMP_POINT='" + std::to_string(point) +
+    "' " + path +
+    " '" + command +
+    "' '" + current +
+    "' '" + previous + "'";
 
   #ifdef _WIN32
   FILE* pipe = _popen(call.c_str(), "r");
@@ -559,7 +565,7 @@ char** completion(const char* text, int start, int end){
     // std::string command = line.substr(0, space);
 
     if (completions.find(command) != completions.end()){
-      std::string candidate = run_completer(completions[command], command, current, previous);
+      std::string candidate = run_completer(completions[command], command, current, previous, line, rl_point);
 
       if( !candidate.empty()){
         std::string completed = line.substr(0, start) + candidate + " ";
