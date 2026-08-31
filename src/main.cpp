@@ -382,15 +382,26 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
 
       std::cout << std::endl;
     }
-    else if(command == "jobs"){
-       for (const Job& job : jobs) {
-        std::cout
-            << "[" << job.job_number << "]+  "
-            << std::left << std::setw(24) << job.status
-            << job.command
-            << std::endl;
+    else if (command == "jobs") {
+      for (size_t i = 0; i < jobs.size(); i++) {
+          char marker = ' ';
+
+          if (i == jobs.size() - 1) {
+              marker = '+';
+          }
+          else if (jobs.size() >= 2 && i == jobs.size() - 2) {
+              marker = '-';
+          }
+
+          const Job& job = jobs[i];
+
+          std::cout
+              << "[" << job.job_number << "]" << marker << "  "
+              << std::left << std::setw(24) << job.status
+              << job.command
+              << std::endl;
       }
-    }
+  }
     else if(command == "type"){
       std::string argument = parsed.args[1];
       handle_type(argument, shell_cmds);
