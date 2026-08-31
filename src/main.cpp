@@ -545,11 +545,42 @@ std::vector<std::string> run_completer(const std::string& path, const std::strin
 
   return result;
 }  
+std::string return_lcp_completion (std::vector<std::string> wordlist){
+  if (wordlist.empty()){
+    return "";
+  }
+  int shortest_word_size = wordlist[0].size();
+  std::string lcp = "";
+
+  for ( std::string word : wordlist){
+    if (word.size() < shortest_word_size){
+      shortest_word_size = word.size();
+    }
+  }
+
+  for (int i = 0; i < shortest_word_size; i++){
+    char letter = wordlist[0][i];
+    for (int j = 0; j < wordlist.size(); j++){
+      if (wordlist[j][i] != letter){
+        return lcp;
+      } 
+    
+    }
+    lcp += letter;
+  }
+
+  return lcp;
+}
+
+
 
 char** completion(const char* text, int start, int end){
   if(start != 0){
     std::string line = rl_line_buffer;
     std::vector<std::string> words = tokenizer(line);
+    if(words.empty()){
+      return nullptr;
+    }
 
     std::string command = words[0];
     std::string current = text;
@@ -584,21 +615,36 @@ char** completion(const char* text, int start, int end){
         rl_replace_line(completed.c_str(), 0);  
       }
       else {
-        first_tab = !first_tab;
-        if (first_tab){
-          rl_ding();
-        } else{
-          std::sort(candidate.begin(), candidate.end());
+        std::string lcp = return_lcp_completion(candidate);
+
+        if (lcp.size() > current.size()){
+          first_tab = false;
+
+          std::string completed = line.substr(0, start) + lcp;
+
+          rl_replace_line(completed.c_str(), 0);
+        }
+
+        else{
+          first_tab = !first_tab;
+
+          if (first_tab){
+            rl_ding();
+          } 
           
-          rl_crlf();
+          else{
+            std::sort(candidate.begin(), candidate.end());
+            
+            rl_crlf();
 
-          for (std::string c : candidate){
-            std::cout << c << "  ";
+            for (std::string c : candidate){
+              std::cout << c << "  ";
+            }
+            std::cout << std::endl;
+
+            rl_on_new_line();
+            rl_redisplay();
           }
-          std::cout << std::endl;
-
-          rl_on_new_line();
-          rl_redisplay();
         }
       }
 
@@ -612,8 +658,6 @@ char** completion(const char* text, int start, int end){
     rl_attempted_completion_over = 1;
   return rl_completion_matches(text, command_generator);
 }
-
-
 
 
 
