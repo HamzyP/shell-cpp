@@ -305,14 +305,15 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     // iss >> command;
     command = parsed.args[0];
     bool background = false;
-    if(command == "exit"){
-      return false;
-    } 
-    else if (parsed.args.back() == "&"){
+    if (parsed.args.back() == "&"){
       parsed.args.pop_back();
       background = true;
 
     }
+
+    if(command == "exit"){
+      return false;
+    } 
     else if (command == "complete"){
       if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
         if (completions.find(parsed.args[2]) != completions.end()){
