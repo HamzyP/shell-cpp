@@ -18,13 +18,14 @@
 #include <io.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-using JobPid = intptr_t;
+#include <windows.h>
+using JobProcess = intptr_t; // process HANDLE from _spawnv
 
 #else // linux/unix
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-using JobPid = pid_t;
+using JobProcess = pid_t; //actual PID
 #endif
 
 std::map<std::string, std::string> completions;
@@ -41,7 +42,8 @@ struct ParsedCommand {
 
 struct Job {
   int job_number;
-  JobPid pid;
+  JobProcess process; // PID linux. HANDLE windows
+  long display_pid;
   std::string command;
   std::string status;
 };
@@ -53,6 +55,34 @@ enum class ParserState {
   singleq,
   doubleq,
 };
+
+void reap_jobs(bool show_done) {
+    for (Job& job : jobs) {
+
+#ifdef _WIN32
+        DWORD exit_code;
+
+        GetExitCodeProcess(
+            reinterpret_cast<HANDLE>(job.process),
+            &exit_code
+        );
+
+        if (exit_code != STILL_ACTIVE) {
+            job.status = "Done";
+        }
+
+#else
+        int status;
+
+        pid_t result =
+            waitpid(job.process, &status, WNOHANG);
+
+        if (result == job.process && WIFEXITED(status)) {
+            job.status = "Done";
+        }
+#endif
+    }
+}
 
 
 std::vector<std::string> tokenizer(const std::string& input){
@@ -266,10 +296,14 @@ void launch_program_windows(const std::string& command_path, std::vector<std::st
   }
 
   argv.push_back(nullptr); // so spawnv knows where the arguments stop.
-  std::string SHOULD_WAIT;
+
   if (background) {
-      intptr_t pid =
+      intptr_t process =
         _spawnv(_P_NOWAIT, command_path.c_str(), argv.data());
+
+        HANDLE handle = reinterpret_cast<HANDLE>(process);
+        DWORD pid = GetProcessId(handle);
+
     int job_number = jobs.size() + 1;
     std::cout << "[" << job_number << "] " << pid << std::endl;
 
@@ -283,7 +317,7 @@ void launch_program_windows(const std::string& command_path, std::vector<std::st
         }
     }
 
-    jobs.push_back({job_number, pid, command, "Running"});
+    jobs.push_back({job_number, process, static_cast<long>(pid) ,command, "Running"});
   }
   else {
       _spawnv(_P_WAIT, command_path.c_str(), argv.data());
@@ -328,7 +362,7 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
           command += " ";
         }
       }
-      jobs.push_back({job_number, pid, command, "Running"});
+      jobs.push_back({job_number, pid, pid, command, "Running"});
     }else{
     waitpid(pid, nullptr, 0);
     }
@@ -383,7 +417,8 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       std::cout << std::endl;
     }
     else if (command == "jobs") {
-      for (size_t i = 0; i < jobs.size(); i++) {
+      reap_jobs(true);
+      for (size_t i = 0; i < jobs.size();) {
           char marker = ' ';
 
           if (i == jobs.size() - 1) {
@@ -393,13 +428,28 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
               marker = '-';
           }
 
-          const Job& job = jobs[i];
+          Job& job = jobs[i];
 
           std::cout
               << "[" << job.job_number << "]" << marker << "  "
               << std::left << std::setw(24) << job.status
-              << job.command
-              << std::endl;
+              << job.command;
+                  if (job.status == "Running") {
+            std::cout << " &";
+        }
+
+        std::cout << std::endl;
+
+              if (job.status == "Done") {
+      #ifdef _WIN32
+                  CloseHandle(reinterpret_cast<HANDLE>(job.process));
+      #endif
+                  jobs.erase(jobs.begin() + i);
+              }
+              else {
+                  i++;
+              }
+          
       }
   }
     else if(command == "type"){
