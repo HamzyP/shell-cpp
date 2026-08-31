@@ -505,11 +505,14 @@ char* command_generator(const char* text, int state){
   return nullptr;
 }
 
-std::string run_completer(const std::string& path){
+std::string run_completer(const std::string& path, const std::string& command, const std::string& current, const std::string& previous){
+  
+  std::string call = path + " '" + command + "' '" + current + "' '" + previous + "'";
+
   #ifdef _WIN32
-  FILE* pipe = _popen(path.c_str(), "r");
+  FILE* pipe = _popen(call.c_str(), "r");
   #else
-  FILE* pipe = popen(path.c_str(), "r");
+  FILE* pipe = popen(call.c_str(), "r");
   #endif
 
   if (!pipe) return "";
@@ -537,14 +540,30 @@ std::string run_completer(const std::string& path){
 char** completion(const char* text, int start, int end){
   if(start != 0){
     std::string line = rl_line_buffer;
-    size_t space = line.find(' ');
-    std::string command = line.substr(0, space);
+    std::vector<std::string> words = tokenizer(line);
+
+    std::string command = words[0];
+    std::string current = text;
+    std::string previous = "";
+
+    if (current.empty()){
+      if (words.size() >= 2) {
+        previous = words.back();
+      }
+    }
+    else if (words.size() >=  2){
+      previous = words[words.size() - 2];
+    }
+
+    // size_t space = line.find(' ');
+    // std::string command = line.substr(0, space);
 
     if (completions.find(command) != completions.end()){
-      std::string candidate = run_completer(completions[command]);
+      std::string candidate = run_completer(completions[command], command, current, previous);
 
       if( !candidate.empty()){
-        rl_replace_line((command +" " + candidate + " ").c_str(), 0 );
+        std::string completed = line.substr(0, start) + candidate + " ";
+        rl_replace_line(completed.c_str(), 0);  
       }
 
       rl_point = rl_end;
