@@ -601,6 +601,7 @@ char** completion(const char* text, int start, int end){
     // std::string command = line.substr(0, space);
 
     if (completions.find(command) != completions.end()){
+      rl_attempted_completion_over = 1;
       std::vector<std::string> candidate = run_completer(completions[command], command, current, previous, line, rl_point);
 
       if (candidate.empty()){
