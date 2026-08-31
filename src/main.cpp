@@ -12,14 +12,18 @@
 #include <algorithm>
 
 #ifdef _WIN32
+
 #include <process.h>
 #include <io.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#else
+using JobPid = intptr_t;
+
+#else // linux/unix
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+using JobPid = pid_t;
 #endif
 
 std::map<std::string, std::string> completions;
@@ -33,6 +37,15 @@ struct ParsedCommand {
   bool redirect_stderr_append = false;
   std::string redirect_file;
 };
+
+struct Job {
+  int job_number;
+  JobPid pid;
+  std::string command;
+  std::string status;
+};
+
+std::vector<Job> jobs;
 
 enum class ParserState {
   normal,
@@ -254,9 +267,22 @@ void launch_program_windows(const std::string& command_path, std::vector<std::st
   argv.push_back(nullptr); // so spawnv knows where the arguments stop.
   std::string SHOULD_WAIT;
   if (background) {
-      intptr_t pid = _spawnv(_P_NOWAIT, command_path.c_str(), argv.data());
+      intptr_t pid =
+        _spawnv(_P_NOWAIT, command_path.c_str(), argv.data());
+    int job_number = jobs.size() + 1;
+    std::cout << "[" << job_number << "] " << pid << std::endl;
 
-      std::cout << "[1] " << pid << std::endl;
+    std::string command;
+
+    for (size_t i = 0; i < args.size(); i++) {
+        command += args[i];
+
+        if (i < args.size() - 1) {
+            command += " ";
+        }
+    }
+
+    jobs.push_back({job_number, pid, command, "Running"});
   }
   else {
       _spawnv(_P_WAIT, command_path.c_str(), argv.data());
@@ -292,7 +318,16 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
     //this must be original shell process
     // wait until external finishes
     if(background){
-      std::cout << "[1] " << pid << std::endl;
+      int job_number = jobs.size() + 1;
+      std::cout << "[" << job_number << "] " << pid << std::endl;
+      std::string command;
+      for (size_t i = 0; i < args.size();i++){
+        command+= args[i];
+        if (i < args.size() - 1){
+          command += " ";
+        }
+      }
+      jobs.push_back({job_number, pid, command, "Running"});
     }else{
     waitpid(pid, nullptr, 0);
     }
