@@ -329,7 +329,9 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
 
       std::cout << std::endl;
     }
-
+    else if(command == "jobs"){
+      std::cout << "";
+    }
     else if(command == "type"){
       std::string argument = parsed.args[1];
       handle_type(argument, shell_cmds);
