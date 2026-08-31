@@ -10,6 +10,7 @@
 #include <cstring>
 #include <map>
 #include <algorithm>
+#include <iomanip>
 
 #ifdef _WIN32
 
@@ -382,7 +383,13 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       std::cout << std::endl;
     }
     else if(command == "jobs"){
-      std::cout << "";
+       for (const Job& job : jobs) {
+        std::cout
+            << "[" << job.job_number << "]+  "
+            << std::left << std::setw(24) << job.status
+            << job.command
+            << std::endl;
+      }
     }
     else if(command == "type"){
       std::string argument = parsed.args[1];
