@@ -244,7 +244,7 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 }
 
 #ifdef _WIN32
-void launch_program_windows(const std::string& command_path, std::vector<std::string>& args){
+void launch_program_windows(const std::string& command_path, std::vector<std::string>& args, bool background){
   //_spawnv() does not accept vector<string> so we do C-style strings 
   std::vector<const char*> argv;
   for (const std::string& arg : args) {
@@ -252,14 +252,21 @@ void launch_program_windows(const std::string& command_path, std::vector<std::st
   }
 
   argv.push_back(nullptr); // so spawnv knows where the arguments stop.
+  std::string SHOULD_WAIT;
+  if (background) {
+      intptr_t pid = _spawnv(_P_NOWAIT, command_path.c_str(), argv.data());
 
-  _spawnv(_P_WAIT, command_path.c_str(), argv.data()); //P_WAIT means wait until program finishes then return here to shell.
+      std::cout << "[1] " << pid << std::endl;
+  }
+  else {
+      _spawnv(_P_WAIT, command_path.c_str(), argv.data());
+  } //P_WAIT means wait until program finishes then return here to shell.
   
 }
 
 #else
 
-void launch_program_linux(const std::string& command_path, std::vector<std::string>& args){
+void launch_program_linux(const std::string& command_path, std::vector<std::string>& args, bool background){
   //execv does not accept vector<string>, so C-style string
   std::vector<char*> argv;
 
@@ -284,7 +291,11 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
   else if (pid >0){
     //this must be original shell process
     // wait until external finishes
+    if(background){
+      std::cout << "[1]" << pid << std::endl;
+    }else{
     waitpid(pid, nullptr, 0);
+    }
 }
 }
 #endif
@@ -293,9 +304,14 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       std::string command;
     // iss >> command;
     command = parsed.args[0];
-
+    bool background = false;
     if(command == "exit"){
       return false;
+    } 
+    else if (parsed.args.back() == "&"){
+      parsed.args.pop_back();
+      background = true;
+
     }
     else if (command == "complete"){
       if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
@@ -372,9 +388,9 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     }
     else{
       #ifdef _WIN32
-      launch_program_windows(command_path, parsed.args);
+      launch_program_windows(command_path, parsed.args, background);
       #else
-      launch_program_linux(command_path, parsed.args);
+      launch_program_linux(command_path, parsed.args, background);
       #endif
     }
   }
