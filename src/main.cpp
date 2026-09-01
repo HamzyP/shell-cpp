@@ -332,6 +332,87 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 }
 
 #ifdef _WIN32
+void execute_pipeline_windows(ParsedCommand& left, ParsedCommand& right) {
+
+    int pipefd[2];
+
+    // Windows CRT pipe
+    if (_pipe(pipefd, 4096, _O_BINARY | _O_NOINHERIT) == -1) {
+        perror("_pipe");
+        return;
+    }
+
+    // ---------------- LEFT ----------------
+
+    int saved_stdout = _dup(1);
+
+    // stdout -> pipe write end
+    _dup2(pipefd[1], 1);
+
+    std::vector<const char*> left_argv;
+
+    for (const std::string& arg : left.args) {
+        left_argv.push_back(arg.c_str());
+    }
+
+    left_argv.push_back(nullptr);
+
+    std::string left_path = find_command(left.args[0]);
+
+    intptr_t left_process =
+        _spawnv(_P_NOWAIT, left_path.c_str(), left_argv.data());
+
+    // restore shell stdout
+    _dup2(saved_stdout, 1);
+    _close(saved_stdout);
+
+
+    // ---------------- RIGHT ----------------
+
+    int saved_stdin = _dup(0);
+
+    // stdin <- pipe read end
+    _dup2(pipefd[0], 0);
+
+    std::vector<const char*> right_argv;
+
+    for (const std::string& arg : right.args) {
+        right_argv.push_back(arg.c_str());
+    }
+
+    right_argv.push_back(nullptr);
+
+    std::string right_path = find_command(right.args[0]);
+
+    intptr_t right_process =
+        _spawnv(_P_NOWAIT, right_path.c_str(), right_argv.data());
+
+    // restore shell stdin
+    _dup2(saved_stdin, 0);
+    _close(saved_stdin);
+
+
+    // shell doesn't use pipe
+    _close(pipefd[0]);
+    _close(pipefd[1]);
+
+    WaitForSingleObject(
+        reinterpret_cast<HANDLE>(left_process),
+        INFINITE
+    );
+
+    WaitForSingleObject(
+        reinterpret_cast<HANDLE>(right_process),
+        INFINITE
+    );
+
+    CloseHandle(reinterpret_cast<HANDLE>(left_process));
+    CloseHandle(reinterpret_cast<HANDLE>(right_process));
+}
+#endif
+
+
+#ifdef _WIN32
 void launch_program_windows(const std::string& command_path, std::vector<std::string>& args, bool background){
   //_spawnv() does not accept vector<string> so we do C-style strings 
   std::vector<const char*> argv;
@@ -411,6 +492,64 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
     waitpid(pid, nullptr, 0);
     }
 }
+}
+
+void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right){
+  int pipefd[2];
+  pipe(pipefd);
+
+  //left
+  pid_t left_pid = fork();
+  if (left_pid == 0){
+    dup2(pipefd[1], STDOUT_FILENO);
+
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::string command_path = find_command(left.args[0]);
+
+    std::vector<char*> argv;
+    for(std::string& arg : left.args){
+      argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+
+    execv(command_path.c_str(), argv.data());
+
+    perror("execv");
+    _exit(1);
+  }
+
+  //right
+  pid_t right_pid = fork();
+
+  if (right_pid == 0){
+    //stdin <- pipe
+    dup2(pipefd[0], STDIN_FILENO);
+
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::string command_path = find_command(right.args[0]);
+
+    std::vector<char*> argv;
+    for(std::string& arg : right.args){
+      argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+
+    execv(command_path.c_str(), argv.data());
+
+    perror("execv");
+    _exit(1);
+  }
+
+  //parent shell
+  close(pipefd[0]);
+  close(pipefd[1]);
+
+  waitpid(left_pid, nullptr, 0);
+  waitpid(right_pid, nullptr, 0);
 }
 #endif
 
@@ -852,9 +991,29 @@ int main(){
     if(line == nullptr){
       break;
     }
-
     std::string input = line;
     free(line);
+
+    size_t pipe_pos = input.find('|');
+
+    if (pipe_pos != std::string::npos) {
+
+        std::string left_input = input.substr(0, pipe_pos);
+        std::string right_input = input.substr(pipe_pos + 1);
+
+        ParsedCommand left = parse_input(left_input);
+        ParsedCommand right = parse_input(right_input);
+
+    #ifdef _WIN32
+        execute_pipeline_windows(left, right);
+    #else
+        execute_pipeline_linux(left, right);
+    #endif
+
+        continue;
+    }
+
+    
 
     ParsedCommand parsed = parse_input(input);
 
