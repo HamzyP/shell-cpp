@@ -11,6 +11,7 @@
 #include <map>
 #include <algorithm>
 #include <iomanip>
+#include <fstream>
 
 #ifdef _WIN32
 
@@ -724,9 +725,20 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       }
     }
     else if (command == "history") {
+      if( parsed.args.size() >= 3 && parsed.args[1] == "-r"){
+        std::ifstream file(parsed.args[2]);
+        std::string line;
+
+        while (std::getline(file, line)){
+          if(!line.empty()){
+            history.push_back(line);
+            add_history(line.c_str());
+          }
+        }
+      }
+      else {
         size_t hsize = history.size();
         size_t start = 0;
-
         if (parsed.args.size() >= 2) {
             int last_n_cmds = std::stoi(parsed.args[1]);
 
@@ -742,6 +754,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
                 << history[i]
                 << std::endl;
         }
+      }
     }
     else if(command == "echo"){
       for (size_t i = 1; i < parsed.args.size(); i++){
@@ -1148,7 +1161,7 @@ int main(){
       break;
     }
     std::string input = line;
-    
+
     if (!input.empty()){
       add_history(input.c_str());
     }
