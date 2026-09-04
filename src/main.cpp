@@ -1148,6 +1148,11 @@ int main(){
       break;
     }
     std::string input = line;
+    
+    if (!input.empty()){
+      add_history(input.c_str());
+    }
+
     history.push_back(input);
     free(line);
 
