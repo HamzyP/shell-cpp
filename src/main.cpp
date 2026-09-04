@@ -31,6 +31,7 @@ using JobProcess = pid_t; //actual PID
 std::map<std::string, std::string> completions;
 
 
+
 struct ParsedCommand {
   std::vector<std::string> args;
   bool redirect_stdout = false;
@@ -39,6 +40,8 @@ struct ParsedCommand {
   bool redirect_stderr_append = false;
   std::string redirect_file;
 };
+
+bool execute_command(ParsedCommand& parsed,const std::set<std::string>& shell_cmds,std::map<std::string, std::string>& completions);
 
 struct Job {
   int job_number;
@@ -332,35 +335,50 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 }
 
 #ifdef _WIN32
-void execute_pipeline_windows(ParsedCommand& left, ParsedCommand& right) {
-
+void execute_pipeline_windows(
+    ParsedCommand& left,
+    ParsedCommand& right,
+    const std::set<std::string>& shell_cmds,
+    std::map<std::string, std::string>& completions
+) {
     int pipefd[2];
 
-    // Windows CRT pipe
     if (_pipe(pipefd, 4096, _O_BINARY | _O_NOINHERIT) == -1) {
         perror("_pipe");
         return;
     }
 
+    intptr_t left_process = -1;
+    intptr_t right_process = -1;
+
     // ---------------- LEFT ----------------
 
     int saved_stdout = _dup(1);
 
-    // stdout -> pipe write end
+    // stdout -> pipe
     _dup2(pipefd[1], 1);
 
-    std::vector<const char*> left_argv;
+    if (shell_cmds.count(left.args[0])) {
+        // builtin writes directly into pipe
+        execute_command(left, shell_cmds, completions);
 
-    for (const std::string& arg : left.args) {
-        left_argv.push_back(arg.c_str());
+        std::cout.flush();
+        std::cerr.flush();
     }
+    else {
+        std::vector<const char*> left_argv;
 
-    left_argv.push_back(nullptr);
+        for (const std::string& arg : left.args) {
+            left_argv.push_back(arg.c_str());
+        }
 
-    std::string left_path = find_command(left.args[0]);
+        left_argv.push_back(nullptr);
 
-    intptr_t left_process =
-        _spawnv(_P_NOWAIT, left_path.c_str(), left_argv.data());
+        std::string left_path = find_command(left.args[0]);
+
+        left_process =
+            _spawnv(_P_NOWAIT, left_path.c_str(), left_argv.data());
+    }
 
     // restore shell stdout
     _dup2(saved_stdout, 1);
@@ -371,43 +389,62 @@ void execute_pipeline_windows(ParsedCommand& left, ParsedCommand& right) {
 
     int saved_stdin = _dup(0);
 
-    // stdin <- pipe read end
+    // stdin <- pipe
     _dup2(pipefd[0], 0);
 
-    std::vector<const char*> right_argv;
+    if (shell_cmds.count(right.args[0])) {
+        execute_command(right, shell_cmds, completions);
 
-    for (const std::string& arg : right.args) {
-        right_argv.push_back(arg.c_str());
+        std::cout.flush();
+        std::cerr.flush();
     }
+    else {
+        std::vector<const char*> right_argv;
 
-    right_argv.push_back(nullptr);
+        for (const std::string& arg : right.args) {
+            right_argv.push_back(arg.c_str());
+        }
 
-    std::string right_path = find_command(right.args[0]);
+        right_argv.push_back(nullptr);
 
-    intptr_t right_process =
-        _spawnv(_P_NOWAIT, right_path.c_str(), right_argv.data());
+        std::string right_path = find_command(right.args[0]);
+
+        right_process =
+            _spawnv(_P_NOWAIT, right_path.c_str(), right_argv.data());
+    }
 
     // restore shell stdin
     _dup2(saved_stdin, 0);
     _close(saved_stdin);
 
 
-    // shell doesn't use pipe
+    // shell no longer needs pipe
     _close(pipefd[0]);
     _close(pipefd[1]);
 
-    WaitForSingleObject(
-        reinterpret_cast<HANDLE>(left_process),
-        INFINITE
-    );
 
-    WaitForSingleObject(
-        reinterpret_cast<HANDLE>(right_process),
-        INFINITE
-    );
+    // only wait if we actually spawned an external program
+    if (left_process != -1) {
+        WaitForSingleObject(
+            reinterpret_cast<HANDLE>(left_process),
+            INFINITE
+        );
 
-    CloseHandle(reinterpret_cast<HANDLE>(left_process));
-    CloseHandle(reinterpret_cast<HANDLE>(right_process));
+        CloseHandle(
+            reinterpret_cast<HANDLE>(left_process)
+        );
+    }
+
+    if (right_process != -1) {
+        WaitForSingleObject(
+            reinterpret_cast<HANDLE>(right_process),
+            INFINITE
+        );
+
+        CloseHandle(
+            reinterpret_cast<HANDLE>(right_process)
+        );
+    }
 }
 #endif
 
@@ -494,7 +531,7 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
 }
 }
 
-void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right){
+void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right,const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
   int pipefd[2];
   pipe(pipefd);
 
@@ -505,6 +542,12 @@ void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right){
 
     close(pipefd[0]);
     close(pipefd[1]);
+    if(shell_cmds.count(left.args[0])){
+      execute_command(left, shell_cmds, completions);
+      std::cout.flush();
+      std::cerr.flush();
+      _exit(0);
+    }
 
     std::string command_path = find_command(left.args[0]);
 
@@ -529,6 +572,13 @@ void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right){
 
     close(pipefd[0]);
     close(pipefd[1]);
+    if (shell_cmds.count(right.args[0])) {
+      execute_command(right, shell_cmds, completions);
+
+      std::cout.flush();
+      std::cerr.flush();
+      _exit(0);
+    }
 
     std::string command_path = find_command(right.args[0]);
 
@@ -1005,9 +1055,9 @@ int main(){
         ParsedCommand right = parse_input(right_input);
 
     #ifdef _WIN32
-        execute_pipeline_windows(left, right);
+        execute_pipeline_windows(left, right, shell_cmds, completions);
     #else
-        execute_pipeline_linux(left, right);
+        execute_pipeline_linux(left, right, shell_cmds, completions);
     #endif
 
         continue;
