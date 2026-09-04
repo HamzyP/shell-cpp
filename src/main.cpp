@@ -1181,9 +1181,11 @@ void write_in_history(){
 
   std::ofstream file(histfile, std::ios::app);
 
-  for (const std::string& entry : history){
-    file << entry << '\n';
+  for (size_t i = last_history_append; i < history.size(); i++) {
+        file << history[i] << '\n';
   }
+
+  last_history_append = history.size();
 
 }
 
