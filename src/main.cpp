@@ -1304,11 +1304,12 @@ int main(){
     
 
     ParsedCommand parsed = parse_input(input);
-    expand_variables(parsed);
+    
 
     if (parsed.args.empty()){
       continue;
     }
+    expand_variables(parsed);
 
     int saved_fd = -1;
 
