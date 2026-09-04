@@ -1179,7 +1179,7 @@ void write_in_history(){
     return;
   }
 
-  std::ofstream file(histfile);
+  std::ofstream file(histfile, std::ios::app);
 
   for (const std::string& entry : history){
     file << entry << '\n';
@@ -1191,7 +1191,7 @@ int main(){
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
   std::set<std::string> shell_cmds = {
-    "echo", "type", "exit", "pwd", "cd", "complete", "jobs", "history"};
+    "echo", "type", "exit", "pwd", "cd", "complete", "jobs", "history", "declare"};
 
   rl_attempted_completion_function = completion;
 
