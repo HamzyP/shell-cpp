@@ -44,6 +44,8 @@ struct ParsedCommand {
 ParsedCommand parse_input(const std::string& input);
 bool execute_command(ParsedCommand& parsed,const std::set<std::string>& shell_cmds,std::map<std::string, std::string>& completions);
 
+std::map<std::string, std::string> shell_vars = {};
+
 struct Job {
   int job_number;
   JobProcess process; // PID linux. HANDLE windows
@@ -706,11 +708,31 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       write_in_history();
       return false;
     } 
-    else if(command == "declare"){
-      if (parsed.args.size() >= 2 && parsed.args[1] == "-p"){
-        std::cout << "declare: " << parsed.args[2] << ": not found" << std::endl;
-      }
+else if (command == "declare") {
+
+    // declare -p NAME
+    if (parsed.args.size() >= 3 && parsed.args[1] == "-p") {
+        std::string name = parsed.args[2];
+        auto it = shell_vars.find(name);
+
+        if (it != shell_vars.end()) {
+            std::cout << "declare -- " << name << "=\"" << it->second << "\"" << std::endl;
+        }
+        else {std::cout << "declare: " << name << ": not found" << std::endl;
+        }
     }
+
+    // declare NAME=VALUE
+    else if (parsed.args.size() >= 2) {
+        std::string definition = parsed.args[1];
+        size_t equals_pos = definition.find('=');
+        if (equals_pos != std::string::npos) {
+            std::string name = definition.substr(0, equals_pos);
+            std::string value = definition.substr(equals_pos + 1);
+            shell_vars[name] = value;
+        }
+    }
+}
     else if (command == "complete"){
       if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
         if (completions.find(parsed.args[2]) != completions.end()){
