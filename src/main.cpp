@@ -31,7 +31,7 @@ using JobProcess = pid_t; //actual PID
 
 std::map<std::string, std::string> completions;
 std::vector<std::string> history;
-
+size_t last_history_append = 0;
 
 struct ParsedCommand {
   std::vector<std::string> args;
@@ -742,6 +742,14 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
         for (const std::string& entry : history) {
           file << entry << '\n';
         }
+      }
+      else if( parsed.args.size() >= 3 && parsed.args[1] == "-a"){
+        std::ofstream file(parsed.args[2], std::ios::app);
+        for (size_t i = last_history_append; i < history.size(); i++) {
+          file << history[i] << '\n';
+        }
+
+        last_history_append = history.size();
       }
       else {
         size_t hsize = history.size();
