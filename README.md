@@ -1,34 +1,44 @@
-[![progress-banner](https://backend.codecrafters.io/progress/shell/79ee59d5-d4d8-4efd-a90c-b9e4f06ec745)](https://app.codecrafters.io/users/HamzyP?r=2qF)
+# C++ Shell
 
-This is a starting point for C++ solutions to the
-["Build Your Own Shell" Challenge](https://app.codecrafters.io/courses/shell/overview).
+A **cross-platform command shell built from scratch in C++**, implementing process execution, parsing, pipelines, job control, completion, persistent history and parameter expansion.
 
-In this challenge, you'll build your own POSIX compliant shell that's capable of
-interpreting shell commands, running external programs and builtin commands like
-cd, pwd, echo and more. Along the way, you'll learn about shell command parsing,
-REPLs, builtin commands, and more.
+Supports both **Linux/POSIX and Windows**, with platform-specific process, pipe and file-descriptor handling.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Highlights
 
-# Passing the first stage
+* External program execution using `fork()`, `execv()` and `waitpid()` on Linux
+* Windows execution using `_spawnv`, `_pipe` and Win32 process APIs
+* Multi-stage pipelines, including shell built-ins
+* Background jobs with process tracking and automatic reaping
+* Custom tokenizer supporting quoting, escaping and stdout/stderr redirection
+* Built-ins including `cd`, `pwd`, `echo`, `type`, `jobs`, `history`, `declare` and `complete`
+* Command and programmable tab completion using GNU Readline
+* Persistent command history with `HISTFILE`
+* Shell variables with `$VAR` and `${VAR}` parameter expansion
 
-The entry point for your `shell` implementation is in `src/main.cpp`. Study and
-uncomment the relevant code, then run the command below to execute the tests on
-our servers:
+```bash
+$ declare NAME=world
+$ echo hello_$NAME
+hello_world
 
-```sh
-codecrafters submit
+$ cat file.txt | head -n 5 | grep hello
+
+$ sleep 10 &
+[1] 12345
 ```
 
-Time to move on to the next stage!
+## Build & Run
 
-# Stage 2 & beyond
+Built with CMake. The project currently targets C++23, although the implementation primarily relies on C++17-era language and standard library features.
 
-Note: This section is for stages 2 and beyond.
+On Unix-like environments:
 
-1. Ensure you have `cmake` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.cpp`.
-1. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+```bash
+./your_program.sh
+```
+
+The main implementation is in `src/main.cpp`.
+
+---
+
+Built while completing the CodeCrafters Build Your Own Shell challenge.
