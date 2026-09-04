@@ -28,7 +28,7 @@ using JobProcess = intptr_t; // process HANDLE from _spawnv
 #include <fcntl.h>
 using JobProcess = pid_t; //actual PID
 #endif
-
+void write_in_history();
 std::map<std::string, std::string> completions;
 std::vector<std::string> history;
 size_t last_history_append = 0;
@@ -703,6 +703,7 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
     }
 
     if(command == "exit"){
+      write_in_history();
       return false;
     } 
     else if (command == "complete"){
@@ -1171,6 +1172,20 @@ void read_in_history(){
   last_history_append = history.size();
 }
 
+void write_in_history(){
+  const char* histfile = std::getenv("HISTFILE");
+
+  if(histfile == nullptr){
+    return;
+  }
+
+  std::ofstream file(histfile);
+
+  for (const std::string& entry : history){
+    file << entry << '\n';
+  }
+
+}
 
 int main(){
   std::cout << std::unitbuf;
