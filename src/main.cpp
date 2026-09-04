@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <fstream>
+#include <cctype>
 
 #ifdef _WIN32
 
@@ -693,6 +694,24 @@ void execute_pipeline_linux(
 }
 #endif
 
+bool validate_shell_var(const std::string& name) {
+    if (name.empty()) {
+        return false;
+    }
+
+    if (!(std::isalpha(name[0]) || name[0] == '_')) {
+        return false;
+    }
+
+    for (size_t i = 1; i < name.size(); i++) {
+        if (!(std::isalnum(name[i]) || name[i] == '_')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
       std::string command;
     // iss >> command;
@@ -726,10 +745,16 @@ else if (command == "declare") {
     else if (parsed.args.size() >= 2) {
         std::string definition = parsed.args[1];
         size_t equals_pos = definition.find('=');
+
         if (equals_pos != std::string::npos) {
             std::string name = definition.substr(0, equals_pos);
             std::string value = definition.substr(equals_pos + 1);
+            if(validate_shell_var(name)){
             shell_vars[name] = value;
+            }
+            else{ 
+              std::cout << "declare: `" << definition << "': not a valid identifier" << std::endl;
+            }
         }
     }
 }
