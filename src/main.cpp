@@ -706,6 +706,11 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
       write_in_history();
       return false;
     } 
+    else if(command == "declare"){
+      if (parsed.args.size() >= 2 && parsed.args[1] == "-p"){
+        std::cout << "declare: " << parsed.args[2] << ": not found" << std::endl;
+      }
+    }
     else if (command == "complete"){
       if (parsed.args.size() >= 3 && parsed.args[1] == "-p"){
         if (completions.find(parsed.args[2]) != completions.end()){
