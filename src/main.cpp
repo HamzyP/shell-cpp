@@ -29,7 +29,7 @@ using JobProcess = pid_t; //actual PID
 #endif
 
 std::map<std::string, std::string> completions;
-
+std::vector<std::string> history;
 
 
 struct ParsedCommand {
@@ -723,7 +723,13 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
         completions.erase(key);
       }
     }
-
+    else if (command == "history"){
+      int i = 1;
+      for (std::string inp : history){
+        std::cout << i << " " << inp << std::endl;
+        i++;
+      }
+    }
     else if(command == "echo"){
       for (size_t i = 1; i < parsed.args.size(); i++){
         std::cout << parsed.args[i];
@@ -1129,6 +1135,7 @@ int main(){
       break;
     }
     std::string input = line;
+    history.push_back(input);
     free(line);
 
     if (input.find('|') != std::string::npos) {
