@@ -718,12 +718,12 @@ void expand_variables(ParsedCommand& parsed){
 
     for(size_t i = 0; i < arg.size(); i++){
       if(arg[i] == '$'){
-
+        // ${VAR}
         if(i + 1 < arg.size() && arg[i + 1] == '{'){
           size_t end = arg.find('}', i + 2);
 
           if(end != std::string::npos){
-            std::string name = arg.substr(i + 2, end - (i + 2));
+            std::string name = arg.substr(i + 2, end - i - 2);
 
             if(shell_vars.find(name) != shell_vars.end()){
               expanded += shell_vars[name];
@@ -731,7 +731,12 @@ void expand_variables(ParsedCommand& parsed){
 
             i = end;
           }
+          else{
+            expanded += '$';
+          }
         }
+
+        // $VAR
         else{
           size_t j = i + 1;
 
@@ -739,13 +744,20 @@ void expand_variables(ParsedCommand& parsed){
             j++;
           }
 
-          std::string name = arg.substr(i + 1, j - (i + 1));
-
-          if(shell_vars.find(name) != shell_vars.end()){
-            expanded += shell_vars[name];
+          // $ by itself
+          if(j == i + 1){
+            expanded += '$';
           }
+          else{
+            std::string name = arg.substr(i + 1, j - i - 1);
 
-          i = j - 1;
+            if(shell_vars.find(name) != shell_vars.end()){
+              expanded += shell_vars[name];
+            }
+
+            // unset variable -> append nothing
+            i = j - 1;
+          }
         }
       }
       else{
@@ -754,6 +766,15 @@ void expand_variables(ParsedCommand& parsed){
     }
 
     arg = expanded;
+  }
+
+  for(size_t i = 1; i < parsed.args.size();){
+    if(parsed.args[i].empty()){
+      parsed.args.erase(parsed.args.begin() + i);
+    }
+    else{
+      i++;
+    }
   }
 }
 
