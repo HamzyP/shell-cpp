@@ -1151,7 +1151,25 @@ char** completion(const char* text, int start, int end){
   return rl_completion_matches(text, command_generator);
 }
 
+void read_in_history(){
+  const char* histfile = std::getenv("HISTFILE");
 
+  if(histfile == nullptr){
+    return;
+  }
+
+  std::ifstream file(histfile);
+  std::string line;
+
+  while(std::getline(file, line)){
+    if(!line.empty()){
+      history.push_back(line);
+      add_history(line.c_str());
+    }
+  }
+
+  last_history_append = history.size();
+}
 
 
 int main(){
@@ -1162,7 +1180,7 @@ int main(){
 
   rl_attempted_completion_function = completion;
 
-
+  read_in_history();
   while (true){
     // std::cout << "$ ";
 
