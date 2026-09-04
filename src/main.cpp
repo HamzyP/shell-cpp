@@ -1111,7 +1111,7 @@ int main(){
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
   std::set<std::string> shell_cmds = {
-    "echo", "type", "exit", "pwd", "cd", "complete", "jobs" };
+    "echo", "type", "exit", "pwd", "cd", "complete", "jobs", "history"};
 
   rl_attempted_completion_function = completion;
 
