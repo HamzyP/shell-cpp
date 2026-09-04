@@ -723,12 +723,25 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
         completions.erase(key);
       }
     }
-    else if (command == "history"){
-      int i = 1;
-      for (std::string inp : history){
-        std::cout << i << " " << inp << std::endl;
-        i++;
-      }
+    else if (command == "history") {
+        size_t hsize = history.size();
+        size_t start = 0;
+
+        if (parsed.args.size() >= 2) {
+            int last_n_cmds = std::stoi(parsed.args[1]);
+
+            if (last_n_cmds < hsize) {
+                start = hsize - last_n_cmds;
+            }
+        }
+
+        for (size_t i = start; i < hsize; i++) {
+            std::cout
+                << std::setw(5) << i + 1
+                << "  "
+                << history[i]
+                << std::endl;
+        }
     }
     else if(command == "echo"){
       for (size_t i = 1; i < parsed.args.size(); i++){
