@@ -736,6 +736,13 @@ bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_c
           }
         }
       }
+      else if( parsed.args.size() >= 3 && parsed.args[1] == "-w"){
+        std::ofstream file(parsed.args[2]);
+        
+        for (const std::string& entry : history) {
+          file << entry << '\n';
+        }
+      }
       else {
         size_t hsize = history.size();
         size_t start = 0;
