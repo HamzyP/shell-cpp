@@ -712,6 +712,21 @@ bool validate_shell_var(const std::string& name) {
     return true;
 }
 
+void expand_variables(ParsedCommand& parsed){
+  for(std::string& arg : parsed.args){
+    if(!arg.empty() && arg[0] == '$'){
+      std::string name = arg.substr(1);
+
+      if (shell_vars.find(name) != shell_vars.end()){
+        arg = shell_vars[name];
+      }
+      else {
+        arg = "";
+      }
+    }
+  }
+}
+
 bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
       std::string command;
     // iss >> command;
@@ -1274,7 +1289,9 @@ int main(){
     if (input.find('|') != std::string::npos) {
 
         std::vector<ParsedCommand> commands = parse_pipeline(input);
-
+        for (ParsedCommand& command : commands) {
+          expand_variables(command);
+        }
     #ifdef _WIN32
         execute_pipeline_windows(commands, shell_cmds, completions);
     #else
@@ -1287,6 +1304,7 @@ int main(){
     
 
     ParsedCommand parsed = parse_input(input);
+    expand_variables(parsed);
 
     if (parsed.args.empty()){
       continue;
