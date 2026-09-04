@@ -712,35 +712,49 @@ bool validate_shell_var(const std::string& name) {
     return true;
 }
 
-void expand_variables(ParsedCommand& parsed) {
-    for (std::string& arg : parsed.args) {
-        std::string expanded;
+void expand_variables(ParsedCommand& parsed){
+  for(std::string& arg : parsed.args){
+    std::string expanded;
 
-        for (size_t i = 0; i < arg.size(); i++) {
-            if (arg[i] == '$') {
-                size_t j = i + 1;
-                // find the end of the variable name
-                while (
-                    j < arg.size() &&
-                    (std::isalnum(arg[j]) || arg[j] == '_')
-                ) {
-                    j++;
-                }
+    for(size_t i = 0; i < arg.size(); i++){
+      if(arg[i] == '$'){
 
-                std::string name = arg.substr(i + 1, j - (i + 1));
+        if(i + 1 < arg.size() && arg[i + 1] == '{'){
+          size_t end = arg.find('}', i + 2);
 
-                if (shell_vars.find(name) != shell_vars.end()) {
-                    expanded += shell_vars[name];
-                }
-                // skip over $NAME
-                i = j - 1;
+          if(end != std::string::npos){
+            std::string name = arg.substr(i + 2, end - (i + 2));
+
+            if(shell_vars.find(name) != shell_vars.end()){
+              expanded += shell_vars[name];
             }
-            else {
-                expanded += arg[i];
-            }
+
+            i = end;
+          }
         }
-        arg = expanded;
+        else{
+          size_t j = i + 1;
+
+          while(j < arg.size() && (std::isalnum(arg[j]) || arg[j] == '_')){
+            j++;
+          }
+
+          std::string name = arg.substr(i + 1, j - (i + 1));
+
+          if(shell_vars.find(name) != shell_vars.end()){
+            expanded += shell_vars[name];
+          }
+
+          i = j - 1;
+        }
+      }
+      else{
+        expanded += arg[i];
+      }
     }
+
+    arg = expanded;
+  }
 }
 
 bool execute_command(ParsedCommand& parsed, const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
