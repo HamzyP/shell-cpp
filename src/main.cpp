@@ -40,7 +40,7 @@ struct ParsedCommand {
   bool redirect_stderr_append = false;
   std::string redirect_file;
 };
-
+ParsedCommand parse_input(const std::string& input);
 bool execute_command(ParsedCommand& parsed,const std::set<std::string>& shell_cmds,std::map<std::string, std::string>& completions);
 
 struct Job {
@@ -58,6 +58,21 @@ enum class ParserState {
   singleq,
   doubleq,
 };
+
+std::vector<ParsedCommand> parse_pipeline(const std::string& input){
+  std::vector<ParsedCommand> commands;
+
+  std::istringstream ss(input);
+  std::string command_text;
+
+  while (std::getline(ss, command_text, '|')){
+    ParsedCommand command = parse_input(command_text);
+    if(!command.args.empty()){
+      commands.push_back(command);
+    }
+  }
+  return commands;
+}
 
 void update_job_statuses() {
     for (Job& job : jobs) {
@@ -336,113 +351,133 @@ void handle_type(const std::string& argument, const std::set<std::string>& shell
 
 #ifdef _WIN32
 void execute_pipeline_windows(
-    ParsedCommand& left,
-    ParsedCommand& right,
+    std::vector<ParsedCommand>& commands,
     const std::set<std::string>& shell_cmds,
     std::map<std::string, std::string>& completions
 ) {
-    int pipefd[2];
+    std::vector<intptr_t> processes;
 
-    if (_pipe(pipefd, 4096, _O_BINARY | _O_NOINHERIT) == -1) {
-        perror("_pipe");
-        return;
-    }
+    int previous_read = -1;
 
-    intptr_t left_process = -1;
-    intptr_t right_process = -1;
+    for (size_t i = 0; i < commands.size(); i++) {
 
-    // ---------------- LEFT ----------------
+        bool has_next = i < commands.size() - 1;
 
-    int saved_stdout = _dup(1);
+        int pipefd[2] = {-1, -1};
 
-    // stdout -> pipe
-    _dup2(pipefd[1], 1);
-
-    if (shell_cmds.count(left.args[0])) {
-        // builtin writes directly into pipe
-        execute_command(left, shell_cmds, completions);
-
-        std::cout.flush();
-        std::cerr.flush();
-    }
-    else {
-        std::vector<const char*> left_argv;
-
-        for (const std::string& arg : left.args) {
-            left_argv.push_back(arg.c_str());
+        if (has_next) {
+            if (_pipe(pipefd, 4096, _O_BINARY) == -1) {
+                perror("_pipe");
+                return;
+            }
         }
 
-        left_argv.push_back(nullptr);
+        int saved_stdin = -1;
+        int saved_stdout = -1;
 
-        std::string left_path = find_command(left.args[0]);
-
-        left_process =
-            _spawnv(_P_NOWAIT, left_path.c_str(), left_argv.data());
-    }
-
-    // restore shell stdout
-    _dup2(saved_stdout, 1);
-    _close(saved_stdout);
-
-
-    // ---------------- RIGHT ----------------
-
-    int saved_stdin = _dup(0);
-
-    // stdin <- pipe
-    _dup2(pipefd[0], 0);
-
-    if (shell_cmds.count(right.args[0])) {
-        execute_command(right, shell_cmds, completions);
-
-        std::cout.flush();
-        std::cerr.flush();
-    }
-    else {
-        std::vector<const char*> right_argv;
-
-        for (const std::string& arg : right.args) {
-            right_argv.push_back(arg.c_str());
+        // stdin <- previous pipe
+        if (previous_read != -1) {
+            saved_stdin = _dup(0);
+            _dup2(previous_read, 0);
         }
 
-        right_argv.push_back(nullptr);
+        // stdout -> next pipe
+        if (has_next) {
+            saved_stdout = _dup(1);
+            _dup2(pipefd[1], 1);
+        }
 
-        std::string right_path = find_command(right.args[0]);
+        ParsedCommand& command = commands[i];
 
-        right_process =
-            _spawnv(_P_NOWAIT, right_path.c_str(), right_argv.data());
+        if (shell_cmds.count(command.args[0])) {
+
+            // builtin
+            execute_command(
+                command,
+                shell_cmds,
+                completions
+            );
+
+            std::cout.flush();
+            std::cerr.flush();
+        }
+        else {
+
+            // external
+            std::string command_path =
+                find_command(command.args[0]);
+
+            if (command_path.empty()) {
+                std::cerr
+                    << command.args[0]
+                    << ": command not found"
+                    << std::endl;
+            }
+            else {
+                std::vector<const char*> argv;
+
+                for (const std::string& arg : command.args) {
+                    argv.push_back(arg.c_str());
+                }
+
+                argv.push_back(nullptr);
+
+                intptr_t process = _spawnv(
+                    _P_NOWAIT,
+                    command_path.c_str(),
+                    argv.data()
+                );
+
+                if (process == -1) {
+                    perror("_spawnv");
+                }
+                else {
+                    processes.push_back(process);
+                }
+            }
+        }
+
+        // restore shell stdin
+        if (saved_stdin != -1) {
+            _dup2(saved_stdin, 0);
+            _close(saved_stdin);
+        }
+
+        // restore shell stdout
+        if (saved_stdout != -1) {
+            std::cout.flush();
+
+            _dup2(saved_stdout, 1);
+            _close(saved_stdout);
+        }
+
+        // previous pipe no longer needed by parent
+        if (previous_read != -1) {
+            _close(previous_read);
+        }
+
+        if (has_next) {
+            // parent doesn't write into this pipe
+            _close(pipefd[1]);
+
+            // next command will read from here
+            previous_read = pipefd[0];
+        }
+        else {
+            previous_read = -1;
+        }
     }
 
-    // restore shell stdin
-    _dup2(saved_stdin, 0);
-    _close(saved_stdin);
+    // wait for every external command
+    for (intptr_t process : processes) {
 
-
-    // shell no longer needs pipe
-    _close(pipefd[0]);
-    _close(pipefd[1]);
-
-
-    // only wait if we actually spawned an external program
-    if (left_process != -1) {
         WaitForSingleObject(
-            reinterpret_cast<HANDLE>(left_process),
+            reinterpret_cast<HANDLE>(process),
             INFINITE
         );
 
         CloseHandle(
-            reinterpret_cast<HANDLE>(left_process)
-        );
-    }
-
-    if (right_process != -1) {
-        WaitForSingleObject(
-            reinterpret_cast<HANDLE>(right_process),
-            INFINITE
-        );
-
-        CloseHandle(
-            reinterpret_cast<HANDLE>(right_process)
+            reinterpret_cast<HANDLE>(process)
         );
     }
 }
@@ -531,75 +566,127 @@ void launch_program_linux(const std::string& command_path, std::vector<std::stri
 }
 }
 
-void execute_pipeline_linux(ParsedCommand& left, ParsedCommand& right,const std::set<std::string>& shell_cmds, std::map<std::string, std::string>& completions){
-  int pipefd[2];
-  pipe(pipefd);
+void execute_pipeline_linux(
+    std::vector<ParsedCommand>& commands,
+    const std::set<std::string>& shell_cmds,
+    std::map<std::string, std::string>& completions
+) {
+    std::vector<pid_t> children;
 
-  //left
-  pid_t left_pid = fork();
-  if (left_pid == 0){
-    dup2(pipefd[1], STDOUT_FILENO);
+    int previous_read = -1;
 
-    close(pipefd[0]);
-    close(pipefd[1]);
-    if(shell_cmds.count(left.args[0])){
-      execute_command(left, shell_cmds, completions);
-      std::cout.flush();
-      std::cerr.flush();
-      _exit(0);
+    for (size_t i = 0; i < commands.size(); i++) {
+
+        bool has_next = i < commands.size() - 1;
+
+        int pipefd[2] = {-1, -1};
+
+        if (has_next) {
+            if (pipe(pipefd) == -1) {
+                perror("pipe");
+                return;
+            }
+        }
+
+        pid_t pid = fork();
+
+        if (pid == 0) {
+            // ---------------- CHILD ----------------
+
+            // If there's a previous command:
+            // stdin <- previous pipe
+            if (previous_read != -1) {
+                dup2(previous_read, STDIN_FILENO);
+            }
+
+            // If there's another command after us:
+            // stdout -> new pipe
+            if (has_next) {
+                dup2(pipefd[1], STDOUT_FILENO);
+            }
+
+            // close unused descriptors
+            if (previous_read != -1) {
+                close(previous_read);
+            }
+
+            if (has_next) {
+                close(pipefd[0]);
+                close(pipefd[1]);
+            }
+
+            ParsedCommand& command = commands[i];
+
+            // builtin
+            if (shell_cmds.count(command.args[0])) {
+                execute_command(command, shell_cmds, completions);
+
+                std::cout.flush();
+                std::cerr.flush();
+                _exit(0);
+            }
+
+            // external
+            std::string command_path =
+                find_command(command.args[0]);
+
+            if (command_path.empty()) {
+                std::cerr
+                    << command.args[0]
+                    << ": command not found"
+                    << std::endl;
+
+                _exit(127);
+            }
+
+            std::vector<char*> argv;
+
+            for (std::string& arg : command.args) {
+                argv.push_back(arg.data());
+            }
+
+            argv.push_back(nullptr);
+
+            execv(
+                command_path.c_str(),
+                argv.data()
+            );
+
+            perror("execv");
+            _exit(1);
+        }
+
+        // ---------------- PARENT ----------------
+
+        if (pid > 0) {
+            children.push_back(pid);
+        }
+        else {
+            perror("fork");
+            return;
+        }
+
+        // Parent doesn't need previous pipe anymore
+        if (previous_read != -1) {
+            close(previous_read);
+        }
+
+        // Parent doesn't write into new pipe
+        if (has_next) {
+            close(pipefd[1]);
+
+            // save read end for NEXT command
+            previous_read = pipefd[0];
+        }
+        else {
+            previous_read = -1;
+        }
     }
 
-    std::string command_path = find_command(left.args[0]);
-
-    std::vector<char*> argv;
-    for(std::string& arg : left.args){
-      argv.push_back(arg.data());
+    // IMPORTANT: wait only AFTER every process exists
+    for (pid_t pid : children) {
+        waitpid(pid, nullptr, 0);
     }
-    argv.push_back(nullptr);
-
-    execv(command_path.c_str(), argv.data());
-
-    perror("execv");
-    _exit(1);
-  }
-
-  //right
-  pid_t right_pid = fork();
-
-  if (right_pid == 0){
-    //stdin <- pipe
-    dup2(pipefd[0], STDIN_FILENO);
-
-    close(pipefd[0]);
-    close(pipefd[1]);
-    if (shell_cmds.count(right.args[0])) {
-      execute_command(right, shell_cmds, completions);
-
-      std::cout.flush();
-      std::cerr.flush();
-      _exit(0);
-    }
-
-    std::string command_path = find_command(right.args[0]);
-
-    std::vector<char*> argv;
-    for(std::string& arg : right.args){
-      argv.push_back(arg.data());
-    }
-    argv.push_back(nullptr);
-
-    execv(command_path.c_str(), argv.data());
-
-    perror("execv");
-    _exit(1);
-  }
-
-  //parent shell
-  close(pipefd[0]);
-  close(pipefd[1]);
-
-  waitpid(left_pid, nullptr, 0);
-  waitpid(right_pid, nullptr, 0);
 }
 #endif
 
@@ -1044,20 +1131,14 @@ int main(){
     std::string input = line;
     free(line);
 
-    size_t pipe_pos = input.find('|');
+    if (input.find('|') != std::string::npos) {
 
-    if (pipe_pos != std::string::npos) {
-
-        std::string left_input = input.substr(0, pipe_pos);
-        std::string right_input = input.substr(pipe_pos + 1);
-
-        ParsedCommand left = parse_input(left_input);
-        ParsedCommand right = parse_input(right_input);
+        std::vector<ParsedCommand> commands = parse_pipeline(input);
 
     #ifdef _WIN32
-        execute_pipeline_windows(left, right, shell_cmds, completions);
+        execute_pipeline_windows(commands, shell_cmds, completions);
     #else
-        execute_pipeline_linux(left, right, shell_cmds, completions);
+        execute_pipeline_linux(commands, shell_cmds, completions);
     #endif
 
         continue;
@@ -1103,10 +1184,3 @@ int main(){
   }
 }
 
-// int main(){
-//   std::vector<std::string> abc = tokenizer(std::string("echo    hello world"));
-//   for (std::string word : abc){
-//     std::cout << word << std::endl;
-//   }
-//   return 1;
-// }
